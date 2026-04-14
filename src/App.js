@@ -8,8 +8,14 @@ import {
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
 
-// ── Country flags ─────────────────────────────────────────────────────
-const OFFICE_FLAGS = { Brisbane:'🇦🇺', Chennai:'🇮🇳', Bangkok:'🇹🇭' }
+// ── Country flag images (flagcdn.com renders on all platforms incl. Windows) ──
+const FLAG_CODES = { Brisbane:'au', Chennai:'in', Bangkok:'th' }
+function OfficeFlag({ office, size=16 }) {
+  const code = FLAG_CODES[office]
+  if (!code) return null
+  return <img src={`https://flagcdn.com/w40/${code}.png`} alt={office}
+    style={{width:size,height:'auto',borderRadius:2,verticalAlign:'middle',flexShrink:0}} />
+}
 
 // ── Toast ─────────────────────────────────────────────────────────────
 function Toast({ msg, onDone }) {
@@ -312,20 +318,44 @@ export default function App() {
     if(existing){ await supabase.from('task_assignments').delete().eq('id',existing.id); await reloadAssignments() }
   }
 
-  // ── Arrow date adjustment ──
+  // ── Arrow date adjustment — consumes adjacent occupied cells ──
   async function adjustTaskDate(name,startDs,which,delta) {
     const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
     await pushUndo()
-    let newStart=startDs,newEnd=entry.end_date
-    if(which==='start'){
-      let d=parseLocalDate(startDs); do{d=addDays(d,delta)}while(isWeekend(d)); newStart=fmtDate(d)
+    let newStart=startDs, newEnd=entry.end_date
+
+    if(which==='start') {
+      let d=parseLocalDate(startDs)
+      do { d=addDays(d,delta) } while(isWeekend(d))
+      newStart=fmtDate(d)
       if(newStart>newEnd) newEnd=newStart
+      // If shrinking start forward, nothing to clear
+      // If extending start back, delete any task that starts on the new start date
+      if(delta<0) {
+        const conflict=assignments.find(a=>a.member_name===name&&a.start_date===newStart)
+        if(conflict) await supabase.from('task_assignments').delete().eq('id',conflict.id)
+      }
     } else {
-      let d=parseLocalDate(entry.end_date); do{d=addDays(d,delta)}while(isWeekend(d)); newEnd=fmtDate(d)
+      let d=parseLocalDate(entry.end_date)
+      do { d=addDays(d,delta) } while(isWeekend(d))
+      newEnd=fmtDate(d)
       if(newEnd<newStart) newStart=newEnd
+      // If extending end forward, delete any task that starts on the new end date
+      if(delta>0) {
+        const conflict=assignments.find(a=>a.member_name===name&&a.start_date===newEnd)
+        if(conflict) await supabase.from('task_assignments').delete().eq('id',conflict.id)
+        // Also delete any task whose start is between old end and new end
+        const between=assignments.filter(a=>
+          a.member_name===name && a.start_date>entry.end_date && a.start_date<=newEnd && a.id!==entry.id
+        )
+        for(const b of between) await supabase.from('task_assignments').delete().eq('id',b.id)
+      }
     }
+
+    // Delete old record if start date changed
     if(newStart!==startDs)
       await supabase.from('task_assignments').delete().eq('member_name',name).eq('start_date',startDs)
+
     await saveTask(name,newStart,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
   }
 
@@ -347,16 +377,22 @@ export default function App() {
   }
 
   function getDateAtX(clientX) {
-    const ths=document.querySelectorAll('#grid-thead th')
-    const allDays=getWeekDays(weekStart)
-    let best=null,dayIdx=0
-    ths.forEach((th,i)=>{
-      if(i===0||th.dataset.weekend) return
-      const rect=th.getBoundingClientRect()
-      if(clientX>=rect.left&&clientX<=rect.right) best=allDays[dayIdx]
-      dayIdx++
+    // Use data-date attributes set on each workday <th> — reliable across both weeks
+    const ths = document.querySelectorAll('#grid-thead th[data-date]')
+    let best = null, bestDist = Infinity
+    ths.forEach(th => {
+      const rect = th.getBoundingClientRect()
+      const mid = (rect.left + rect.right) / 2
+      const dist = Math.abs(clientX - mid)
+      // if cursor is within this column
+      if (clientX >= rect.left && clientX <= rect.right) {
+        best = th.dataset.date; bestDist = 0
+      } else if (dist < bestDist) {
+        // snap to nearest column edge if outside grid
+        bestDist = dist; best = th.dataset.date
+      }
     })
-    return best
+    return best ? best : null  // return ISO string directly
   }
 
   useEffect(()=>{
@@ -365,9 +401,10 @@ export default function App() {
       setDragGhost(g=>g?{...g,x:e.clientX,y:e.clientY}:null)
       if(dragState.current) {
         const {entry,handle}=dragState.current
-        const targetDay=getDateAtX(e.clientX)
-        if(!targetDay||isWeekend(targetDay)) return
-        const targetDs=fmtDate(targetDay)
+        const targetDs=getDateAtX(e.clientX)
+        if(!targetDs) return
+        const targetDay=parseLocalDate(targetDs)
+        if(isWeekend(targetDay)) return
         if(handle==='end'&&targetDs<dragState.current.currentStart) return
         if(handle==='start'&&targetDs>dragState.current.currentEnd) return
         if(handle==='end') dragState.current.currentEnd=targetDs
@@ -381,8 +418,7 @@ export default function App() {
         document.querySelectorAll('[data-member-row]').forEach(r=>r.style.outline='')
         const el=document.elementFromPoint(e.clientX,e.clientY)
         const row=el?.closest('[data-member-row]')
-        if(row&&row.dataset.memberRow!==copyDragState.current.name)
-          row.style.outline='2px solid #4ff7a2'
+        if(row) row.style.outline='2px solid #4ff7a2'
       }
     }
     async function onMouseUp(e) {
@@ -409,13 +445,15 @@ export default function App() {
         const el=document.elementFromPoint(e.clientX,e.clientY)
         const row=el?.closest('[data-member-row]')
         const targetName=row?.dataset?.memberRow
-        const targetDay=getDateAtX(e.clientX)
-        if(targetName&&targetName!==srcName&&targetDay&&!isWeekend(targetDay)) {
-          const targetDs=fmtDate(targetDay)
+        const targetDs=getDateAtX(e.clientX)
+        // allow same person (moves) or different person (copies); just need a valid date + row
+        if(targetName&&targetDs&&!isWeekend(parseLocalDate(targetDs))) {
+          // Don't copy to exact same position (same person, same start date)
+          if(targetName===srcName&&targetDs===startDs) return
           const dur=entry.end_date>startDs?Math.round((parseLocalDate(entry.end_date)-parseLocalDate(startDs))/86400000):0
           const newEnd=dur>0?fmtDate(addDays(parseLocalDate(targetDs),dur)):targetDs
           await saveTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes)
-          showToast(`Copied to ${targetName}`)
+          showToast(targetName===srcName?`Moved to ${fmtDisplay(parseLocalDate(targetDs))}`:`Copied to ${targetName}`)
         }
       }
     }
@@ -673,7 +711,7 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
         </StatCard>
         {/* Per-office */}
         {allOffices.map(o=>(
-          <StatCard key={o} label={`${OFFICE_FLAGS[o]||''} ${o}`} color={OFFICE_COLORS[o]||'#b87fff'}>
+          <StatCard key={o} label={<span style={{display:'flex',alignItems:'center',gap:4}}>{o} <OfficeFlag office={o} size={13} /></span>} color={OFFICE_COLORS[o]||'#b87fff'}>
             <span style={{fontSize:26,fontWeight:700}}>{teamMembers.filter(m=>m.office===o).length}</span>
           </StatCard>
         ))}
@@ -702,7 +740,7 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
               border:officeFilter===o?'none':'1px solid #2a3050',
               background:officeFilter===o?(o==='all'?'#5a6380':OFFICE_COLORS[o]||'#b87fff'):'#181c27',
               color:officeFilter===o?(o==='Chennai'||o==='Bangkok'?'#111':'#fff'):'#9aa3c2'}}>
-            {o==='all'?'All Offices':`${OFFICE_FLAGS[o]||''} ${o}`}
+            {o==='all'?'All Offices':<>{o} <OfficeFlag office={o} size={14} /></>}
           </button>
         ))}
       </div>
@@ -757,19 +795,27 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
           </colgroup>
           <thead id="grid-thead"><tr>
             <th style={thStyle}>Team Member</th>
-            {week1Work.map((d,i)=>(
-              <th key={i} style={thStyle}>
-                <div style={{fontSize:11,color:'#e2e8ff',fontWeight:500}}>{DAY_SHORT[i]}</div>
-                <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
-              </th>
-            ))}
+            {week1Work.map((d,i)=>{
+              const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
+              return(
+                <th key={i} data-date={ds} style={isToday?thStyleToday:thStyle}>
+                  {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
+                  <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[i]}</div>
+                  <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
+                </th>
+              )
+            })}
             <th data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
-            {week2Work.map((d,i)=>(
-              <th key={i} style={thStyle}>
-                <div style={{fontSize:11,color:'#e2e8ff',fontWeight:500}}>{DAY_SHORT[7+i]}</div>
-                <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
-              </th>
-            ))}
+            {week2Work.map((d,i)=>{
+              const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
+              return(
+                <th key={i} data-date={ds} style={isToday?thStyleToday:thStyle}>
+                  {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
+                  <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[7+i]}</div>
+                  <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
+                </th>
+              )
+            })}
             <th data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
           </tr></thead>
           <tbody>
@@ -782,7 +828,7 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
                     color:OFFICE_COLORS[office]||'#b87fff',background:'#181c27',
                     borderLeft:`3px solid ${OFFICE_COLORS[office]||'#b87fff'}`,
                     borderBottom:'1px solid #2a3050'}}>
-                    {OFFICE_FLAGS[office]||''} {office} Office
+                    <span style={{display:'flex',alignItems:'center',gap:6}}>{office} Office <OfficeFlag office={office} size={13} /></span>
                   </td>
                 </tr>,
                 ...members.map(m=>(
@@ -823,8 +869,10 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
   )
 }
 
-const thStyle={background:'#1e2335',padding:'8px 5px',textAlign:'center',fontSize:10,color:'#9aa3c2',border:'1px solid #2a3050'}
+const thStyle={background:'#1e2335',padding:'6px 5px 8px',textAlign:'center',fontSize:10,color:'#9aa3c2',border:'1px solid #2a3050'}
+const thStyleToday={...thStyle,background:'#1a2540',borderBottom:'2px solid #f75c5c'}
 const tdStyle={background:'#181c27',border:'1px solid #2a3050',verticalAlign:'top',cursor:'pointer',position:'relative'}
+const tdStyleToday={...tdStyle,background:'#181d2a'}
 
 // Stat card — label on top, content below
 function StatCard({label,color,children}){
@@ -855,15 +903,17 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
 
   function renderWeek(workDays){
     const cells=[]; let i=0
+    const todayDs=fmtDate(new Date())
     while(i<workDays.length){
       const d=workDays[i],ds=fmtDate(d)
+      const isToday=ds===todayDs
       const active=getActive(member.name,ds)
       if(!active){
         cells.push(
           <td key={ds} onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null})}
-            style={{...tdStyle,minHeight:52}}
-            onMouseEnter={e=>e.currentTarget.style.background='#232840'}
-            onMouseLeave={e=>e.currentTarget.style.background='#181c27'}>
+            style={{...tdStyle,minHeight:52,background:isToday?'#181d2a':'#181c27'}}
+            onMouseEnter={e=>e.currentTarget.style.background=isToday?'#1e2640':'#232840'}
+            onMouseLeave={e=>e.currentTarget.style.background=isToday?'#181d2a':'#181c27'}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',
               minHeight:52,color:'#5a6380',fontSize:10,padding:4}}>+ assign</div>
           </td>
@@ -887,10 +937,9 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
         <td key={ds} colSpan={span}
           style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bg,borderLeft:`3px solid ${bc}`}}
           onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry})}
-          // Drag the cell to copy to another row
           onMouseDown={!isVirtual?(e=>{
-            // Only start copy drag on left button with shift, or just left-click drag on cell body
-            // We distinguish from arrow buttons via stopPropagation on those buttons
+            // Don't start copy drag if the click was on an arrow button
+            if(e.target.closest('button')) return
             if(e.button===0) startCopy(e,member.name,startDs)
           }):undefined}>
           <div style={{padding:'4px 6px',display:'flex',alignItems:'flex-start',gap:3,minHeight:52}}>
@@ -972,7 +1021,7 @@ function LeavePanel({office,color,items,onAdd,onEdit,onDelete}){
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
-        {OFFICE_FLAGS[office]||''} {office}
+        {office} <OfficeFlag office={office} size={13} />
         <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
           color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
@@ -998,7 +1047,7 @@ function PHPanel({office,color,items,onAdd,onEdit,onDelete}){
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
-        {OFFICE_FLAGS[office]||''} {office}
+        {office} <OfficeFlag office={office} size={13} />
         <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
           color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
@@ -1112,7 +1161,7 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo}){
             <td style={adminTd}>
               <span style={{padding:'2px 8px',borderRadius:10,fontSize:10,
                 border:`1px solid ${getOfficeColor(m.office)}`,color:getOfficeColor(m.office)}}>
-                {OFFICE_FLAGS[m.office]||''} {m.office}
+                <span style={{display:'flex',alignItems:'center',gap:4}}>{m.office} <OfficeFlag office={m.office} size={12} /></span>
               </span>
             </td>
             <td style={{...adminTd,color:'#5a6380',fontSize:11}}>{m.sort_order}</td>
