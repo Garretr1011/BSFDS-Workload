@@ -446,14 +446,68 @@ export default function App() {
         const row=el?.closest('[data-member-row]')
         const targetName=row?.dataset?.memberRow
         const targetDs=getDateAtX(e.clientX)
-        // allow same person (moves) or different person (copies); just need a valid date + row
+        // need a valid drop target
         if(targetName&&targetDs&&!isWeekend(parseLocalDate(targetDs))) {
-          // Don't copy to exact same position (same person, same start date)
+          // Don't drop on exact same position
           if(targetName===srcName&&targetDs===startDs) return
-          const dur=entry.end_date>startDs?Math.round((parseLocalDate(entry.end_date)-parseLocalDate(startDs))/86400000):0
-          const newEnd=dur>0?fmtDate(addDays(parseLocalDate(targetDs),dur)):targetDs
-          await saveTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes)
-          showToast(targetName===srcName?`Moved to ${fmtDisplay(parseLocalDate(targetDs))}`:`Copied to ${targetName}`)
+
+          // ── Merge check: is the drop cell directly adjacent to an identical task? ──
+          // Look for an existing task for targetName that:
+          //   (a) has the same task label + pid, AND
+          //   (b) its end_date is the day before targetDs  → extend its end_date to newEnd
+          //   OR  its start_date is the day after newEnd   → extend its start_date to targetDs
+          const dur = entry.end_date>startDs
+            ? Math.round((parseLocalDate(entry.end_date)-parseLocalDate(startDs))/86400000) : 0
+          const newEnd = dur>0 ? fmtDate(addDays(parseLocalDate(targetDs),dur)) : targetDs
+
+          function isSameTask(a) {
+            return a.member_name===targetName && a.task===entry.task && (a.pid||'')===(entry.pid||'')
+          }
+          // Day before targetDs (skip weekends)
+          let dayBefore = addDays(parseLocalDate(targetDs),-1)
+          while(isWeekend(dayBefore)) dayBefore=addDays(dayBefore,-1)
+          const dayBeforeDs = fmtDate(dayBefore)
+          // Day after newEnd (skip weekends)
+          let dayAfter = addDays(parseLocalDate(newEnd),1)
+          while(isWeekend(dayAfter)) dayAfter=addDays(dayAfter,1)
+          const dayAfterDs = fmtDate(dayAfter)
+
+          // Check: existing task ends the day before drop → extend its end_date
+          const mergeLeft = assignments.find(a=>isSameTask(a)&&a.end_date===dayBeforeDs)
+          // Check: existing task starts the day after drop's end → extend its start_date
+          const mergeRight = assignments.find(a=>isSameTask(a)&&a.start_date===dayAfterDs)
+
+          await pushUndo()
+
+          if(mergeLeft) {
+            // Extend the existing task's end date to cover the dropped range
+            const mergedEnd = newEnd > mergeLeft.end_date ? newEnd : mergeLeft.end_date
+            await supabase.from('task_assignments').update({
+              end_date: mergedEnd, updated_at: new Date().toISOString()
+            }).eq('id', mergeLeft.id)
+            // Also merge right if that exists too
+            if(mergeRight) {
+              const finalEnd = mergeRight.end_date > mergedEnd ? mergeRight.end_date : mergedEnd
+              await supabase.from('task_assignments').update({
+                end_date: finalEnd, updated_at: new Date().toISOString()
+              }).eq('id', mergeLeft.id)
+              await supabase.from('task_assignments').delete().eq('id', mergeRight.id)
+            }
+            showToast('Merged')
+          } else if(mergeRight) {
+            // Extend the existing task's start_date back to targetDs
+            await supabase.from('task_assignments').update({
+              start_date: targetDs, updated_at: new Date().toISOString()
+            }).eq('id', mergeRight.id)
+            showToast('Merged')
+          } else {
+            // No adjacent identical task — normal copy/move
+            await saveTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
+            showToast(targetName===srcName
+              ? `Moved to ${fmtDisplay(parseLocalDate(targetDs))}`
+              : `Copied to ${targetName}`)
+          }
+          await reloadAssignments()
         }
       }
     }
@@ -529,8 +583,8 @@ export default function App() {
           <div style={{display:'flex',alignItems:'center',gap:18}}>
             <img src="/logo.png" alt="BSFDS" style={{height:60,objectFit:'contain'}}
               onError={e=>e.target.style.display='none'} />
-            <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:28,
-              letterSpacing:'-0.5px',lineHeight:1.1}}>
+            <div style={{fontFamily:'"Inter",system-ui,sans-serif',fontWeight:800,fontSize:28,
+              letterSpacing:'-0.5px',lineHeight:1.2}}>
               BSFDS Workload Manager
             </div>
           </div>
@@ -880,7 +934,7 @@ function StatCard({label,color,children}){
     <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,
       padding:'10px 14px',minWidth:100,flex:1}}>
       <div style={{fontSize:10,color:'#9aa3c2',marginBottom:4,letterSpacing:.3}}>{label}</div>
-      <div style={{color,fontFamily:'Syne,sans-serif'}}>{children}</div>
+      <div style={{color,fontFamily:'system-ui,-apple-system,sans-serif'}}>{children}</div>
     </div>
   )
 }
@@ -1132,51 +1186,54 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// TEAM TAB — bug fix: use sort.col not col in sort function
+// TEAM TAB
 // ═════════════════════════════════════════════════════════════════════
 function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo}){
   const [sort,setSort]=useState({col:'office',dir:1})
   function toggle(col){ setSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
   const sorted=[...teamMembers].sort((a,b)=>{
-    const av=(sort.col==='sort_order'?String(a.sort_order):(a[sort.col]||'')).toLowerCase()
-    const bv=(sort.col==='sort_order'?String(b.sort_order):(b[sort.col]||'')).toLowerCase()
+    const av=(a[sort.col]||'').toString().toLowerCase()
+    const bv=(b[sort.col]||'').toString().toLowerCase()
     return av<bv?-sort.dir:av>bv?sort.dir:0
   })
-  const SH=({col,ch})=>(
-    <th style={{...adminTh,cursor:'pointer',userSelect:'none'}} onClick={()=>toggle(col)}>
+  const SH=({col,ch,width})=>(
+    <th style={{...adminTh,cursor:'pointer',userSelect:'none',width:width||'auto'}} onClick={()=>toggle(col)}>
       {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
     </th>
   )
   return(
-    <AdminSection title="👥 Team Members" onAdd={()=>setMemberModal({})}>
-      <table style={adminTableStyle}><thead><tr>
-        <SH col="name" ch="Name" /><SH col="role" ch="Role" />
-        <SH col="office" ch="Office" /><SH col="sort_order" ch="Order" />
-        <th style={adminTh}>Actions</th>
-      </tr></thead><tbody>
-        {sorted.map(m=>(
-          <tr key={m.id} style={{borderBottom:'1px solid #2a3050'}}>
-            <td style={adminTd}><strong>{m.name}</strong></td>
-            <td style={adminTd}>{m.role}</td>
-            <td style={adminTd}>
-              <span style={{padding:'2px 8px',borderRadius:10,fontSize:10,
-                border:`1px solid ${getOfficeColor(m.office)}`,color:getOfficeColor(m.office)}}>
-                <span style={{display:'flex',alignItems:'center',gap:4}}>{m.office} <OfficeFlag office={m.office} size={12} /></span>
-              </span>
-            </td>
-            <td style={{...adminTd,color:'#5a6380',fontSize:11}}>{m.sort_order}</td>
-            <td style={adminTd}>
-              <button onClick={()=>setMemberModal(m)} style={iconBtn}>✏️</button>
-              <button onClick={async()=>{await withUndo(async()=>{
-                await supabase.from('team_members').delete().eq('id',m.id)
-                const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
-                setTeamMembers(r.data||[])
-              })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
-            </td>
-          </tr>
-        ))}
-      </tbody></table>
-    </AdminSection>
+    <div style={{maxWidth:700}}>
+      <AdminSection title="👥 Team Members" onAdd={()=>setMemberModal({})}>
+        <table style={{...adminTableStyle,tableLayout:'fixed'}}><thead><tr>
+          <SH col="name" ch="Name" width="200px" />
+          <SH col="role" ch="Role" width="180px" />
+          <SH col="office" ch="Office" width="160px" />
+          <th style={{...adminTh,width:90}}>Actions</th>
+        </tr></thead><tbody>
+          {sorted.map(m=>(
+            <tr key={m.id} style={{borderBottom:'1px solid #2a3050'}}>
+              <td style={adminTd}><strong>{m.name}</strong></td>
+              <td style={{...adminTd,color:'#9aa3c2'}}>{m.role}</td>
+              <td style={adminTd}>
+                <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
+                  borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
+                  color:getOfficeColor(m.office)}}>
+                  {m.office} <OfficeFlag office={m.office} size={13} />
+                </span>
+              </td>
+              <td style={adminTd}>
+                <button onClick={()=>setMemberModal(m)} style={iconBtn}>✏️</button>
+                <button onClick={async()=>{await withUndo(async()=>{
+                  await supabase.from('team_members').delete().eq('id',m.id)
+                  const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
+                  setTeamMembers(r.data||[])
+                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody></table>
+      </AdminSection>
+    </div>
   )
 }
 
