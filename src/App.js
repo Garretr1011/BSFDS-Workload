@@ -8,25 +8,28 @@ import {
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
 
-// ─── Toast ────────────────────────────────────────────────────────────
+// ── Country flags ─────────────────────────────────────────────────────
+const OFFICE_FLAGS = { Brisbane:'🇦🇺', Chennai:'🇮🇳', Bangkok:'🇹🇭' }
+
+// ── Toast ─────────────────────────────────────────────────────────────
 function Toast({ msg, onDone }) {
-  useEffect(() => { const t=setTimeout(onDone,3000); return ()=>clearTimeout(t) }, [onDone])
+  useEffect(()=>{ const t=setTimeout(onDone,3000); return ()=>clearTimeout(t) },[onDone])
   return <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',
     background:'rgba(247,92,92,.95)',color:'#fff',padding:'10px 20px',borderRadius:6,
     fontSize:13,zIndex:9999,fontFamily:'DM Mono,monospace',pointerEvents:'none'}}>{msg}</div>
 }
 
-// ─── Drag Ghost ───────────────────────────────────────────────────────
+// ── Drag Ghost ────────────────────────────────────────────────────────
 function DragGhost({ x, y, text, isCopy }) {
   if (!text) return null
-  return <div style={{position:'fixed',left:x+12,top:y-15,pointerEvents:'none',zIndex:999,
+  return <div style={{position:'fixed',left:x+14,top:y-16,pointerEvents:'none',zIndex:999,
     background:isCopy?'rgba(79,247,162,.2)':'rgba(79,142,247,.25)',
     border:`2px dashed ${isCopy?'#4ff7a2':'#4f8ef7'}`,
     borderRadius:4,padding:'4px 10px',fontSize:11,
     color:isCopy?'#4ff7a2':'#4f8ef7',whiteSpace:'nowrap'}}>{text}</div>
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────
+// ── Modal ─────────────────────────────────────────────────────────────
 function Modal({ open, onClose, children, width }) {
   if (!open) return null
   return (
@@ -35,7 +38,8 @@ function Modal({ open, onClose, children, width }) {
         display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div onMouseDown={e=>e.stopPropagation()}
         style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:10,
-          width:width||480,maxWidth:'95vw',padding:24,boxShadow:'0 24px 70px rgba(0,0,0,.6)',
+          width:width||480,maxWidth:'95vw',padding:24,
+          boxShadow:'0 24px 70px rgba(0,0,0,.6)',
           maxHeight:'90vh',overflowY:'auto',fontFamily:'DM Mono,monospace'}}>
         {children}
       </div>
@@ -53,9 +57,77 @@ const btnBase={background:'#1e2335',border:'1px solid #2a3050',color:'#9aa3c2',
   padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontFamily:'DM Mono,monospace'}
 const modalH3={fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:'#e2e8ff'}
 
-// ═══════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────
+// Full undo/redo snapshot — covers ALL tables
+// ─────────────────────────────────────────────────────────────────────
+async function takeSnapshot() {
+  const [ta,ul,ph,pr,at,tm] = await Promise.all([
+    supabase.from('task_assignments').select('*'),
+    supabase.from('upcoming_leave').select('*'),
+    supabase.from('public_holidays').select('*'),
+    supabase.from('projects').select('*'),
+    supabase.from('admin_tasks').select('*'),
+    supabase.from('team_members').select('*'),
+  ])
+  return {
+    assignments: ta.data||[],
+    leave: ul.data||[],
+    ph: ph.data||[],
+    projects: pr.data||[],
+    adminTasks: at.data||[],
+    teamMembers: tm.data||[],
+  }
+}
+
+async function restoreSnapshot(snap, setters) {
+  const { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
+    setProjects,setAdminTasks,setTeamMembers } = setters
+
+  // Restore task_assignments
+  await supabase.from('task_assignments').delete().neq('id','00000000-0000-0000-0000-000000000000')
+  if (snap.assignments.length>0) await supabase.from('task_assignments').insert(
+    snap.assignments.map(a=>({...a,updated_at:new Date().toISOString()})))
+
+  // Restore upcoming_leave
+  await supabase.from('upcoming_leave').delete().neq('id','_none_')
+  if (snap.leave.length>0) await supabase.from('upcoming_leave').insert(snap.leave)
+
+  // Restore public_holidays
+  await supabase.from('public_holidays').delete().neq('id','_none_')
+  if (snap.ph.length>0) await supabase.from('public_holidays').insert(snap.ph)
+
+  // Restore projects
+  await supabase.from('projects').delete().neq('id','_none_')
+  if (snap.projects.length>0) await supabase.from('projects').insert(snap.projects)
+
+  // Restore admin_tasks
+  await supabase.from('admin_tasks').delete().neq('id','_none_')
+  if (snap.adminTasks.length>0) await supabase.from('admin_tasks').insert(snap.adminTasks)
+
+  // Restore team_members
+  await supabase.from('team_members').delete().neq('id','00000000-0000-0000-0000-000000000000')
+  if (snap.teamMembers.length>0) await supabase.from('team_members').insert(snap.teamMembers)
+
+  // Refresh local state
+  const [ta,ul,ph,pr,at,tm] = await Promise.all([
+    supabase.from('task_assignments').select('*'),
+    supabase.from('upcoming_leave').select('*'),
+    supabase.from('public_holidays').select('*').order('iso_date'),
+    supabase.from('projects').select('*').order('job'),
+    supabase.from('admin_tasks').select('*').order('name'),
+    supabase.from('team_members').select('*').order('office').order('sort_order'),
+  ])
+  setAssignments(ta.data||[])
+  setUpcomingLeaveRows(ul.data||[])
+  setPublicHolidayRows(ph.data||[])
+  setProjects(pr.data||[])
+  setAdminTasks(at.data||[])
+  setTeamMembers(tm.data||[])
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // MAIN APP
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 export default function App() {
   const [tab, setTab] = useState('workload')
   const [loading, setLoading] = useState(true)
@@ -76,7 +148,8 @@ export default function App() {
   const [officeFilter, setOfficeFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [statWeeks, setStatWeeks] = useState(2) // 1-4
+  const [statWeeks, setStatWeeks] = useState(2)
+  const [leaveStatWeeks, setLeaveStatWeeks] = useState(1)
 
   const [assignModal, setAssignModal] = useState(null)
   const [projectModal, setProjectModal] = useState(null)
@@ -86,21 +159,26 @@ export default function App() {
   const [phModal, setPhModal] = useState(null)
 
   const [dragGhost, setDragGhost] = useState(null)
-  const dragState = useRef(null)
-  const copyDragState = useRef(null)
+  const dragState = useRef(null)      // resize drag
+  const copyDragState = useRef(null)  // copy drag
 
-  // Undo stack — array of snapshots of assignments
+  // Undo / Redo stacks — each entry is a full DB snapshot
   const undoStack = useRef([])
+  const redoStack = useRef([])
   const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
 
   const showToast = useCallback(msg=>setToast(msg),[])
+
+  const setters = { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
+    setProjects,setAdminTasks,setTeamMembers }
 
   const reloadAssignments = useCallback(async()=>{
     const r=await supabase.from('task_assignments').select('*')
     setAssignments(r.data||[])
   },[])
 
-  // ── Load ──
+  // ── Load all data ──
   useEffect(()=>{
     async function loadAll() {
       setLoading(true)
@@ -127,7 +205,7 @@ export default function App() {
   useEffect(()=>{ setUpcomingLeave(buildLeaveMap(upcomingLeaveRows)) },[upcomingLeaveRows])
   useEffect(()=>{ setUpcomingPH(buildPHMap(publicHolidayRows)) },[publicHolidayRows])
 
-  // ── Realtime ──
+  // ── Realtime subscriptions ──
   useEffect(()=>{
     const channels=[
       supabase.channel('rt-team').on('postgres_changes',{event:'*',schema:'public',table:'team_members'},
@@ -157,62 +235,70 @@ export default function App() {
     getActiveTask(name,ds,tasks,upcomingLeave,upcomingPH,teamMembers),
     [tasks,upcomingLeave,upcomingPH,teamMembers])
 
-  // ── Stats (respect statWeeks toggle) ──
-  const statWorkdays = []
-  for (let i=0; i<statWeeks*7; i++) {
-    const d = addDays(weekStart, i)
-    if (!isWeekend(d)) statWorkdays.push(d)
-  }
-  let onLeave=0, onLeaveHrs=0, unassigned=0, assigned=0, totalPossible=0
+  // ── Stats ──
+  const statWorkdays=[]
+  for(let i=0;i<statWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) statWorkdays.push(d) }
+  let unassigned=0,assigned=0,totalPossible=0
   teamMembers.forEach(({name})=>{
-    let hl=false
-    week1Work.forEach(d=>{ if(getActive(name,fmtDate(d))?.entry?.wtype==='leave') hl=true })
-    statWorkdays.forEach(d=>{
-      totalPossible++
-      const a=getActive(name,fmtDate(d))
-      if(a) assigned++
-      else unassigned++
-    })
-    if(hl){ onLeave++; onLeaveHrs+=5*8 }
+    statWorkdays.forEach(d=>{ totalPossible++; if(getActive(name,fmtDate(d))) assigned++; else unassigned++ })
   })
-  const utilPct = totalPossible>0 ? Math.round(assigned/totalPossible*100) : 0
+  const utilPct=totalPossible>0?Math.round(assigned/totalPossible*100):0
 
-  // Active projects in the current 2-week window (for project filter bar)
-  const activeProjectsInWindow = []
-  projects.filter(p=>p.status==='active').forEach(p=>{
-    const used = teamMembers.some(m=>
-      allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===p.id)
-    )
-    if (used) activeProjectsInWindow.push(p)
+  // Leave stat (separate week toggle)
+  const leaveStatWorkdays=[]
+  for(let i=0;i<leaveStatWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) leaveStatWorkdays.push(d) }
+  const onLeaveSet=new Set()
+  teamMembers.forEach(({name})=>{
+    leaveStatWorkdays.forEach(d=>{ if(getActive(name,fmtDate(d))?.entry?.wtype==='leave') onLeaveSet.add(name) })
   })
+  const onLeave=onLeaveSet.size
+  const onLeaveHrs=onLeave*leaveStatWeeks*5*8
 
-  // ── Undo ──
-  function pushUndo(snapshot) {
-    undoStack.current.push(snapshot)
+  // Projects active in window
+  const activeProjectsInWindow=projects.filter(p=>p.status==='active'&&
+    teamMembers.some(m=>allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===p.id)))
+
+  // ── Undo/Redo helpers ──
+  async function pushUndo() {
+    const snap = await takeSnapshot()
+    undoStack.current.push(snap)
+    redoStack.current = []          // new action clears redo
     setCanUndo(true)
+    setCanRedo(false)
   }
 
   async function undo() {
     if (!undoStack.current.length) return
+    const currentSnap = await takeSnapshot()
+    redoStack.current.push(currentSnap)
     const prev = undoStack.current.pop()
     setCanUndo(undoStack.current.length>0)
-    // Delete all current assignments then re-insert the snapshot
-    await supabase.from('task_assignments').delete().neq('id','00000000-0000-0000-0000-000000000000')
-    if (prev.length>0) {
-      await supabase.from('task_assignments').insert(prev.map(a=>({
-        id:a.id, member_name:a.member_name, start_date:a.start_date,
-        end_date:a.end_date, task:a.task, pid:a.pid||null,
-        wtype:a.wtype, notes:a.notes||null, updated_at:new Date().toISOString()
-      })))
-    }
-    await reloadAssignments()
+    setCanRedo(true)
+    await restoreSnapshot(prev, setters)
     showToast('Undone')
   }
 
+  async function redo() {
+    if (!redoStack.current.length) return
+    const currentSnap = await takeSnapshot()
+    undoStack.current.push(currentSnap)
+    const next = redoStack.current.pop()
+    setCanUndo(true)
+    setCanRedo(redoStack.current.length>0)
+    await restoreSnapshot(next, setters)
+    showToast('Redone')
+  }
+
+  // ── Wrapper: push undo before any DB mutation ──
+  async function withUndo(fn) {
+    await pushUndo()
+    await fn()
+  }
+
   // ── Save / Clear task ──
-  async function saveTask(name, dateStr, pid, taskLabel, wtype, endDate, notes) {
-    pushUndo([...assignments])
-    const existing = assignments.find(a=>a.member_name===name&&a.start_date===dateStr)
+  async function saveTask(name,dateStr,pid,taskLabel,wtype,endDate,notes,skipUndo=false) {
+    if (!skipUndo) await pushUndo()
+    const existing=assignments.find(a=>a.member_name===name&&a.start_date===dateStr)
     const row={member_name:name,start_date:dateStr,end_date:endDate||dateStr,
       task:taskLabel,pid:pid||null,wtype,notes:notes||null,updated_at:new Date().toISOString()}
     if(existing) await supabase.from('task_assignments').update(row).eq('id',existing.id)
@@ -220,35 +306,27 @@ export default function App() {
     await reloadAssignments()
   }
 
-  async function clearTask(name, dateStr) {
-    pushUndo([...assignments])
+  async function clearTask(name,dateStr) {
+    await pushUndo()
     const existing=assignments.find(a=>a.member_name===name&&a.start_date===dateStr)
     if(existing){ await supabase.from('task_assignments').delete().eq('id',existing.id); await reloadAssignments() }
   }
 
-  // ── Arrow date adjustment (1 day at a time) ──
-  async function adjustTaskDate(name, startDs, which, delta) {
-    // which: 'start' or 'end', delta: +1 or -1
-    const entry = tasks[name]?.[startDs]?.[0]
-    if (!entry) return
-    pushUndo([...assignments])
-    let newStart=startDs, newEnd=entry.end_date
-    if (which==='start') {
-      let d = parseLocalDate(startDs)
-      do { d=addDays(d,delta) } while(isWeekend(d))
-      newStart=fmtDate(d)
+  // ── Arrow date adjustment ──
+  async function adjustTaskDate(name,startDs,which,delta) {
+    const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
+    await pushUndo()
+    let newStart=startDs,newEnd=entry.end_date
+    if(which==='start'){
+      let d=parseLocalDate(startDs); do{d=addDays(d,delta)}while(isWeekend(d)); newStart=fmtDate(d)
       if(newStart>newEnd) newEnd=newStart
     } else {
-      let d = parseLocalDate(entry.end_date)
-      do { d=addDays(d,delta) } while(isWeekend(d))
-      newEnd=fmtDate(d)
+      let d=parseLocalDate(entry.end_date); do{d=addDays(d,delta)}while(isWeekend(d)); newEnd=fmtDate(d)
       if(newEnd<newStart) newStart=newEnd
     }
-    // If start moved, delete old record first
-    if (newStart!==startDs) {
+    if(newStart!==startDs)
       await supabase.from('task_assignments').delete().eq('member_name',name).eq('start_date',startDs)
-    }
-    await saveTask(name,newStart,entry.pid,entry.task,entry.wtype,newEnd,entry.notes)
+    await saveTask(name,newStart,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
   }
 
   // ── Drag resize ──
@@ -259,22 +337,21 @@ export default function App() {
     setDragGhost({x:e.clientX,y:e.clientY,text:entry.task,isCopy:false})
   }
 
-  // ── Drag copy ──
+  // ── Drag copy (triggered by dragging a task cell directly) ──
   function startCopy(e, name, startDs) {
     e.preventDefault(); e.stopPropagation()
     const active=getActive(name,startDs)
     if(!active||active.isVirtual) return
     copyDragState.current={name,startDs,entry:active.entry}
-    setDragGhost({x:e.clientX,y:e.clientY,text:`⊕ Copy: ${active.entry.task}`,isCopy:true})
+    setDragGhost({x:e.clientX,y:e.clientY,text:`⊕ ${active.entry.task}`,isCopy:true})
   }
 
   function getDateAtX(clientX) {
     const ths=document.querySelectorAll('#grid-thead th')
     const allDays=getWeekDays(weekStart)
-    let best=null, dayIdx=0
+    let best=null,dayIdx=0
     ths.forEach((th,i)=>{
-      if(i===0) return
-      if(th.dataset.weekend) return
+      if(i===0||th.dataset.weekend) return
       const rect=th.getBoundingClientRect()
       if(clientX>=rect.left&&clientX<=rect.right) best=allDays[dayIdx]
       dayIdx++
@@ -304,7 +381,8 @@ export default function App() {
         document.querySelectorAll('[data-member-row]').forEach(r=>r.style.outline='')
         const el=document.elementFromPoint(e.clientX,e.clientY)
         const row=el?.closest('[data-member-row]')
-        if(row) row.style.outline='1px solid #4ff7a2'
+        if(row&&row.dataset.memberRow!==copyDragState.current.name)
+          row.style.outline='2px solid #4ff7a2'
       }
     }
     async function onMouseUp(e) {
@@ -313,12 +391,12 @@ export default function App() {
         dragState.current=null; setDragGhost(null)
         const changed=handle==='end'?currentEnd!==entry.end_date:currentStart!==startDs
         if(changed) {
-          pushUndo([...assignments])
+          await pushUndo()
           if(handle==='start'&&currentStart!==startDs)
             await supabase.from('task_assignments').delete().eq('member_name',name).eq('start_date',startDs)
+          const existing=assignments.find(a=>a.member_name===name&&a.start_date===currentStart)
           const row={member_name:name,start_date:currentStart,end_date:currentEnd,
             task:entry.task,pid:entry.pid||null,wtype:entry.wtype,notes:entry.notes||null,updated_at:new Date().toISOString()}
-          const existing=assignments.find(a=>a.member_name===name&&a.start_date===currentStart)
           if(existing) await supabase.from('task_assignments').update(row).eq('id',existing.id)
           else await supabase.from('task_assignments').insert(row)
           await reloadAssignments()
@@ -350,9 +428,10 @@ export default function App() {
   const [rowDragSrc,setRowDragSrc]=useState(null)
   async function moveRow(memberId,office,dir) {
     const om=teamMembers.filter(m=>m.office===office).sort((a,b)=>a.sort_order-b.sort_order)
-    const idx=om.findIndex(m=>m.id===memberId), nIdx=idx+dir
+    const idx=om.findIndex(m=>m.id===memberId),nIdx=idx+dir
     if(nIdx<0||nIdx>=om.length) return
     const a=om[idx],b=om[nIdx]
+    await pushUndo()
     await Promise.all([
       supabase.from('team_members').update({sort_order:b.sort_order}).eq('id',a.id),
       supabase.from('team_members').update({sort_order:a.sort_order}).eq('id',b.id),
@@ -366,9 +445,11 @@ export default function App() {
     const si=om.findIndex(m=>m.id===rowDragSrc.id),ti=om.findIndex(m=>m.id===targetId)
     if(si<0||ti<0){setRowDragSrc(null);return}
     const ro=[...om]; const [mv]=ro.splice(si,1); ro.splice(ti,0,mv)
-    Promise.all(ro.map((m,i)=>supabase.from('team_members').update({sort_order:i+1}).eq('id',m.id)))
-      .then(()=>supabase.from('team_members').select('*').order('office').order('sort_order'))
-      .then(r=>{setTeamMembers(r.data||[]);setRowDragSrc(null)})
+    pushUndo().then(()=>
+      Promise.all(ro.map((m,i)=>supabase.from('team_members').update({sort_order:i+1}).eq('id',m.id)))
+        .then(()=>supabase.from('team_members').select('*').order('office').order('sort_order'))
+        .then(r=>{setTeamMembers(r.data||[]);setRowDragSrc(null)})
+    )
   }
 
   // ── Export ──
@@ -406,15 +487,20 @@ export default function App() {
       <div style={{maxWidth:1600,margin:'0 auto',padding:'16px 20px'}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-          borderBottom:'1px solid #2a3050',paddingBottom:14,marginBottom:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:16}}>
-            <img src="/logo.png" alt="BSFDS" style={{height:44,objectFit:'contain'}} onError={e=>e.target.style.display='none'} />
-            <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:20,letterSpacing:'-0.5px'}}>
+          borderBottom:'1px solid #2a3050',paddingBottom:16,marginBottom:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:18}}>
+            <img src="/logo.png" alt="BSFDS" style={{height:60,objectFit:'contain'}}
+              onError={e=>e.target.style.display='none'} />
+            <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:28,
+              letterSpacing:'-0.5px',lineHeight:1.1}}>
               BSFDS Workload Manager
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            {canUndo&&<button className="btn" onClick={undo} title="Undo last change">↩ Undo</button>}
+            <button onClick={undo} disabled={!canUndo} title="Undo"
+              style={{...btnBase,opacity:canUndo?1:.4,cursor:canUndo?'pointer':'default'}}>↩ Undo</button>
+            <button onClick={redo} disabled={!canRedo} title="Redo"
+              style={{...btnBase,opacity:canRedo?1:.4,cursor:canRedo?'pointer':'default'}}>↪ Redo</button>
             <button className="btn" onClick={exportSummary}>↓ Export</button>
             <button className="btn" onClick={()=>window.print()}>Print</button>
           </div>
@@ -446,142 +532,169 @@ export default function App() {
             search={search} setSearch={setSearch}
             allOffices={allOffices}
             onLeave={onLeave} onLeaveHrs={onLeaveHrs}
+            leaveStatWeeks={leaveStatWeeks} setLeaveStatWeeks={setLeaveStatWeeks}
             unassigned={unassigned} unassignedHrs={unassigned*8}
-            utilPct={utilPct}
-            statWeeks={statWeeks} setStatWeeks={setStatWeeks}
-            getActive={getActive}
-            setAssignModal={setAssignModal}
+            utilPct={utilPct} statWeeks={statWeeks} setStatWeeks={setStatWeeks}
+            getActive={getActive} setAssignModal={setAssignModal}
             setLeaveModal={setLeaveModal} setPhModal={setPhModal}
             startResize={startResize} startCopy={startCopy}
             adjustTaskDate={adjustTaskDate}
             rowDragSrc={rowDragSrc} setRowDragSrc={setRowDragSrc}
             moveRow={moveRow} handleRowDrop={handleRowDrop}
-            showToast={showToast}
+            withUndo={withUndo} showToast={showToast}
           />
         )}
         {tab==='projects'&&(
-          <ProjectsTab projects={projects} adminTasks={adminTasks}
-            setProjectModal={setProjectModal} setAdminTaskModal={setAdminTaskModal} />
+          <ProjectsTab projects={projects} setProjects={setProjects}
+            adminTasks={adminTasks} setAdminTasks={setAdminTasks}
+            setProjectModal={setProjectModal} setAdminTaskModal={setAdminTaskModal}
+            withUndo={withUndo} />
         )}
         {tab==='team'&&(
-          <TeamTab teamMembers={teamMembers} setTeamMembers={setTeamMembers} setMemberModal={setMemberModal} />
+          <TeamTab teamMembers={teamMembers} setTeamMembers={setTeamMembers}
+            setMemberModal={setMemberModal} withUndo={withUndo} />
         )}
       </div>
 
       {/* Modals */}
       {assignModal&&<AssignModal modal={assignModal} onClose={()=>setAssignModal(null)}
         projects={projects} adminTasks={adminTasks} onSave={saveTask} onClear={clearTask} showToast={showToast} />}
+
       {projectModal!==null&&<ProjectModal item={projectModal} projects={projects} adminTasks={adminTasks}
         onClose={()=>setProjectModal(null)}
         onSave={async row=>{
-          if(row.id) await supabase.from('projects').upsert(row)
-          else await supabase.from('projects').insert({...row,id:'p'+Date.now()})
-          const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[]); setProjectModal(null)
+          await withUndo(async()=>{
+            if(row.id) await supabase.from('projects').upsert(row)
+            else await supabase.from('projects').insert({...row,id:'p'+Date.now()})
+            const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[])
+          }); setProjectModal(null)
         }} />}
+
       {adminTaskModal!==null&&<AdminTaskModal item={adminTaskModal} projects={projects} adminTasks={adminTasks}
         onClose={()=>setAdminTaskModal(null)}
         onSave={async row=>{
-          if(row.id) await supabase.from('admin_tasks').upsert(row)
-          else await supabase.from('admin_tasks').insert({...row,id:'a'+Date.now()})
-          const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[]); setAdminTaskModal(null)
+          await withUndo(async()=>{
+            if(row.id) await supabase.from('admin_tasks').upsert(row)
+            else await supabase.from('admin_tasks').insert({...row,id:'a'+Date.now()})
+            const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
+          }); setAdminTaskModal(null)
         }} />}
+
       {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers}
         onClose={()=>setMemberModal(null)}
         onSave={async row=>{
-          if(row.id) await supabase.from('team_members').update(row).eq('id',row.id)
-          else await supabase.from('team_members').insert(row)
-          const r=await supabase.from('team_members').select('*').order('office').order('sort_order'); setTeamMembers(r.data||[]); setMemberModal(null)
+          await withUndo(async()=>{
+            if(row.id) await supabase.from('team_members').update(row).eq('id',row.id)
+            else await supabase.from('team_members').insert(row)
+            const r=await supabase.from('team_members').select('*').order('office').order('sort_order'); setTeamMembers(r.data||[])
+          }); setMemberModal(null)
         }} />}
+
       {leaveModal!==null&&<LeaveModal item={leaveModal} teamMembers={teamMembers}
         onClose={()=>setLeaveModal(null)} showToast={showToast}
         onSave={async row=>{
-          if(row.id&&upcomingLeaveRows.find(x=>x.id===row.id)) await supabase.from('upcoming_leave').update(row).eq('id',row.id)
-          else await supabase.from('upcoming_leave').insert({...row,id:row.id||'l'+Date.now()})
-          const r=await supabase.from('upcoming_leave').select('*'); setUpcomingLeaveRows(r.data||[]); setLeaveModal(null)
+          await withUndo(async()=>{
+            if(row.id&&upcomingLeaveRows.find(x=>x.id===row.id)) await supabase.from('upcoming_leave').update(row).eq('id',row.id)
+            else await supabase.from('upcoming_leave').insert({...row,id:row.id||'l'+Date.now()})
+            const r=await supabase.from('upcoming_leave').select('*'); setUpcomingLeaveRows(r.data||[])
+          }); setLeaveModal(null)
         }} />}
+
       {phModal!==null&&<PHModal item={phModal} onClose={()=>setPhModal(null)} showToast={showToast}
         onSave={async row=>{
-          if(row.id&&publicHolidayRows.find(x=>x.id===row.id)) await supabase.from('public_holidays').update(row).eq('id',row.id)
-          else await supabase.from('public_holidays').insert({...row,id:row.id||'ph'+Date.now()})
-          const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[]); setPhModal(null)
+          await withUndo(async()=>{
+            if(row.id&&publicHolidayRows.find(x=>x.id===row.id)) await supabase.from('public_holidays').update(row).eq('id',row.id)
+            else await supabase.from('public_holidays').insert({...row,id:row.id||'ph'+Date.now()})
+            const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
+          }); setPhModal(null)
         }} />}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 // WORKLOAD TAB
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStart,
   teamMembers,projects,adminTasks,tasks,upcomingLeave,upcomingPH,
   upcomingLeaveRows,setUpcomingLeaveRows,publicHolidayRows,setPublicHolidayRows,
   officeFilter,setOfficeFilter,projectFilter,setProjectFilter,activeProjectsInWindow,
-  search,setSearch,allOffices,onLeave,onLeaveHrs,unassigned,unassignedHrs,utilPct,
-  statWeeks,setStatWeeks,getActive,setAssignModal,setLeaveModal,setPhModal,
-  startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,moveRow,handleRowDrop,showToast}) {
+  search,setSearch,allOffices,onLeave,onLeaveHrs,leaveStatWeeks,setLeaveStatWeeks,
+  unassigned,unassignedHrs,utilPct,statWeeks,setStatWeeks,
+  getActive,setAssignModal,setLeaveModal,setPhModal,
+  startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,
+  moveRow,handleRowDrop,withUndo,showToast}) {
 
   const leaveByOffice={},phByOffice={}
   upcomingLeaveRows.forEach(l=>{if(!leaveByOffice[l.office])leaveByOffice[l.office]=[];leaveByOffice[l.office].push(l)})
   publicHolidayRows.forEach(p=>{if(!phByOffice[p.office])phByOffice[p.office]=[];phByOffice[p.office].push(p)})
 
   async function deleteLeave(id){
-    await supabase.from('upcoming_leave').delete().eq('id',id)
-    const r=await supabase.from('upcoming_leave').select('*'); setUpcomingLeaveRows(r.data||[])
+    await withUndo(async()=>{
+      await supabase.from('upcoming_leave').delete().eq('id',id)
+      const r=await supabase.from('upcoming_leave').select('*'); setUpcomingLeaveRows(r.data||[])
+    })
   }
   async function deletePH(id){
-    await supabase.from('public_holidays').delete().eq('id',id)
-    const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
+    await withUndo(async()=>{
+      await supabase.from('public_holidays').delete().eq('id',id)
+      const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
+    })
   }
 
-  // Filter members by office + project + search
-  const filteredMembers = teamMembers.filter(m=>{
+  const filteredMembers=teamMembers.filter(m=>{
     if(officeFilter!=='all'&&m.office!==officeFilter) return false
     if(search&&!m.name.toLowerCase().includes(search.toLowerCase())) return false
-    if(projectFilter!=='all'){
-      const hasProject=allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===projectFilter)
-      if(!hasProject) return false
-    }
+    if(projectFilter!=='all'&&!allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===projectFilter)) return false
     return true
   })
   const officeGroups={}
   filteredMembers.forEach(m=>{if(!officeGroups[m.office])officeGroups[m.office]=[];officeGroups[m.office].push(m)})
 
+  const WeekToggle=({val,set})=>(
+    <div style={{display:'flex',gap:3,marginTop:5}}>
+      {[1,2,3,4].map(w=>(
+        <button key={w} onClick={()=>set(w)}
+          style={{padding:'1px 6px',borderRadius:3,fontSize:10,cursor:'pointer',
+            border:'1px solid #2a3050',
+            background:val===w?'#4f8ef7':'transparent',
+            color:val===w?'#fff':'#9aa3c2'}}>{w}w</button>
+      ))}
+    </div>
+  )
+
   return(
     <div>
-      {/* Stats row */}
+      {/* Stat cards */}
       <div style={{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
-        <StatCard val={teamMembers.length} label="Total Team" color="#4f8ef7" />
-        {allOffices.map(o=><StatCard key={o} val={teamMembers.filter(m=>m.office===o).length}
-          label={o} color={OFFICE_COLORS[o]||'#b87fff'} />)}
-        {/* Leave card */}
-        <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,
-          padding:'11px 16px',minWidth:120,flex:1}}>
-          <div style={{fontFamily:'Syne,sans-serif',fontSize:24,fontWeight:800,color:'#f75c5c'}}>{onLeave}</div>
-          <div style={{fontSize:10,color:'#9aa3c2',marginTop:1}}>Team Members On Leave</div>
-          <div style={{fontSize:10,color:'#f75c5c',marginTop:3}}>{onLeave*5*8} hrs this week</div>
-        </div>
-        {/* Unassigned card with toggle */}
-        <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,
-          padding:'11px 16px',minWidth:160,flex:1}}>
-          <div style={{display:'flex',alignItems:'baseline',gap:8}}>
-            <div style={{fontFamily:'Syne,sans-serif',fontSize:24,fontWeight:800,color:'#5a6380'}}>{unassigned}</div>
-            <div style={{fontSize:12,color:'#5a6380'}}>days / {unassignedHrs} hrs</div>
+        {/* Total Team */}
+        <StatCard label="Total Team" color="#4f8ef7">
+          <span style={{fontSize:26,fontWeight:700}}>{teamMembers.length}</span>
+        </StatCard>
+        {/* Per-office */}
+        {allOffices.map(o=>(
+          <StatCard key={o} label={`${OFFICE_FLAGS[o]||''} ${o}`} color={OFFICE_COLORS[o]||'#b87fff'}>
+            <span style={{fontSize:26,fontWeight:700}}>{teamMembers.filter(m=>m.office===o).length}</span>
+          </StatCard>
+        ))}
+        {/* Team Members On Leave */}
+        <StatCard label="Team Members On Leave" color="#f75c5c">
+          <span style={{fontSize:26,fontWeight:700}}>{onLeave}</span>
+          <div style={{fontSize:10,color:'#f75c5c',marginTop:2}}>{onLeaveHrs} hrs</div>
+          <WeekToggle val={leaveStatWeeks} set={setLeaveStatWeeks} />
+        </StatCard>
+        {/* Unassigned */}
+        <StatCard label="Unassigned" color="#5a6380">
+          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+            <span style={{fontSize:26,fontWeight:700}}>{unassigned}</span>
+            <span style={{fontSize:11,color:'#5a6380'}}>days / {unassignedHrs} hrs</span>
           </div>
-          <div style={{fontSize:10,color:'#9aa3c2',marginTop:1}}>Unassigned ({statWeeks}wk)</div>
-          <div style={{fontSize:10,color:'#4ff7a2',marginTop:3}}>Utilisation: {utilPct}%</div>
-          <div style={{display:'flex',gap:4,marginTop:6}}>
-            {[1,2,3,4].map(w=>(
-              <button key={w} onClick={()=>setStatWeeks(w)}
-                style={{padding:'1px 6px',borderRadius:3,fontSize:10,cursor:'pointer',
-                  border:'1px solid #2a3050',
-                  background:statWeeks===w?'#4f8ef7':'transparent',
-                  color:statWeeks===w?'#fff':'#9aa3c2'}}>{w}w</button>
-            ))}
-          </div>
-        </div>
+          <div style={{fontSize:10,color:'#4ff7a2',marginTop:2}}>Utilisation {utilPct}%</div>
+          <WeekToggle val={statWeeks} set={setStatWeeks} />
+        </StatCard>
       </div>
 
-      {/* Office filter row */}
+      {/* Office filters */}
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
         {['all',...allOffices].map(o=>(
           <button key={o} onClick={()=>setOfficeFilter(o)}
@@ -589,12 +702,12 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
               border:officeFilter===o?'none':'1px solid #2a3050',
               background:officeFilter===o?(o==='all'?'#5a6380':OFFICE_COLORS[o]||'#b87fff'):'#181c27',
               color:officeFilter===o?(o==='Chennai'||o==='Bangkok'?'#111':'#fff'):'#9aa3c2'}}>
-            {o==='all'?'All Offices':o}
+            {o==='all'?'All Offices':`${OFFICE_FLAGS[o]||''} ${o}`}
           </button>
         ))}
       </div>
 
-      {/* Project filter row */}
+      {/* Project filters */}
       {activeProjectsInWindow.length>0&&(
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
           <button onClick={()=>setProjectFilter('all')}
@@ -607,8 +720,8 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
               style={{padding:'3px 10px',borderRadius:20,fontSize:10,cursor:'pointer',
                 border:projectFilter===p.id?'none':'1px solid #2a3050',
                 background:projectFilter===p.id?p.color:'#181c27',
-                color:projectFilter===p.id?'#fff':'#9aa3c2'}}>
-              {p.job ? `${p.job} ${p.name}` : p.name}
+                color:projectFilter===p.id?'#111':'#9aa3c2'}}>
+              {p.job?`${p.job} ${p.name}`:p.name}
             </button>
           ))}
         </div>
@@ -668,7 +781,9 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
                     letterSpacing:2,textTransform:'uppercase',padding:'6px 14px',
                     color:OFFICE_COLORS[office]||'#b87fff',background:'#181c27',
                     borderLeft:`3px solid ${OFFICE_COLORS[office]||'#b87fff'}`,
-                    borderBottom:'1px solid #2a3050'}}>{office} Office</td>
+                    borderBottom:'1px solid #2a3050'}}>
+                    {OFFICE_FLAGS[office]||''} {office} Office
+                  </td>
                 </tr>,
                 ...members.map(m=>(
                   <MemberRow key={m.id} member={m}
@@ -711,12 +826,13 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
 const thStyle={background:'#1e2335',padding:'8px 5px',textAlign:'center',fontSize:10,color:'#9aa3c2',border:'1px solid #2a3050'}
 const tdStyle={background:'#181c27',border:'1px solid #2a3050',verticalAlign:'top',cursor:'pointer',position:'relative'}
 
-function StatCard({val,label,color}){
+// Stat card — label on top, content below
+function StatCard({label,color,children}){
   return(
     <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,
-      padding:'11px 16px',minWidth:100,flex:1}}>
-      <div style={{fontFamily:'Syne,sans-serif',fontSize:24,fontWeight:800,color}}>{val}</div>
-      <div style={{fontSize:10,color:'#9aa3c2',marginTop:1}}>{label}</div>
+      padding:'10px 14px',minWidth:100,flex:1}}>
+      <div style={{fontSize:10,color:'#9aa3c2',marginBottom:4,letterSpacing:.3}}>{label}</div>
+      <div style={{color,fontFamily:'Syne,sans-serif'}}>{children}</div>
     </div>
   )
 }
@@ -769,42 +885,46 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
 
       cells.push(
         <td key={ds} colSpan={span}
+          style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bg,borderLeft:`3px solid ${bc}`}}
           onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry})}
-          style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bg,borderLeft:`3px solid ${bc}`}}>
+          // Drag the cell to copy to another row
+          onMouseDown={!isVirtual?(e=>{
+            // Only start copy drag on left button with shift, or just left-click drag on cell body
+            // We distinguish from arrow buttons via stopPropagation on those buttons
+            if(e.button===0) startCopy(e,member.name,startDs)
+          }):undefined}>
           <div style={{padding:'4px 6px',display:'flex',alignItems:'flex-start',gap:3,minHeight:52}}>
-            {/* Left arrow: shrink/extend start */}
+            {/* Start date arrows */}
             {!isVirtual&&(
-              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:2}}>
-                <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
+              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
+                <button title="Move start earlier"
+                  onMouseDown={e=>e.stopPropagation()}
                   onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1)}}
-                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,.35)',
-                    fontSize:9,padding:'1px 2px',lineHeight:1,borderRadius:2}}>◀</button>
-                <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
+                  style={arrowBtn}>◀</button>
+                <button title="Move start later"
+                  onMouseDown={e=>e.stopPropagation()}
                   onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1)}}
-                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,.35)',
-                    fontSize:9,padding:'1px 2px',lineHeight:1,borderRadius:2}}>▶</button>
+                  style={arrowBtn}>▶</button>
               </div>
             )}
-            <div style={{flex:1,minWidth:0}}>
+            <div style={{flex:1,minWidth:0,userSelect:'none'}}>
               <div style={{fontSize:10,fontWeight:500,color:nc,wordBreak:'break-word',lineHeight:1.3}}>{entry.task}</div>
               {entry.notes&&<div style={{fontSize:9,color:'#9aa3c2',marginTop:2,wordBreak:'break-word',lineHeight:1.3}}>{entry.notes}</div>}
               {entry.wtype&&!['leave','ph','admin'].includes(entry.wtype)&&(
                 <div style={{fontSize:9,color:'#9aa3c2',fontStyle:'italic',marginTop:1}}>{entry.wtype}</div>
               )}
             </div>
+            {/* End date arrows */}
             {!isVirtual&&(
-              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:2}}>
-                <button title="Copy to another person" onMouseDown={e=>{e.stopPropagation();startCopy(e,member.name,startDs)}}
-                  style={{background:'none',border:'none',cursor:'grab',color:'rgba(255,255,255,.35)',
-                    fontSize:10,padding:'1px 2px',lineHeight:1}}>⊕</button>
-                <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
+              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
+                <button title="Move end earlier"
+                  onMouseDown={e=>e.stopPropagation()}
                   onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1)}}
-                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,.35)',
-                    fontSize:9,padding:'1px 2px',lineHeight:1,borderRadius:2}}>◀</button>
-                <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
+                  style={arrowBtn}>◀</button>
+                <button title="Move end later"
+                  onMouseDown={e=>e.stopPropagation()}
                   onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1)}}
-                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,.35)',
-                    fontSize:9,padding:'1px 2px',lineHeight:1,borderRadius:2}}>▶</button>
+                  style={arrowBtn}>▶</button>
               </div>
             )}
           </div>
@@ -842,6 +962,9 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
   )
 }
 
+const arrowBtn={background:'rgba(255,255,255,.06)',border:'none',cursor:'pointer',
+  color:'rgba(255,255,255,.4)',fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
+
 // ─── Leave & PH Panels ────────────────────────────────────────────────
 function LeavePanel({office,color,items,onAdd,onEdit,onDelete}){
   return(
@@ -849,7 +972,7 @@ function LeavePanel({office,color,items,onAdd,onEdit,onDelete}){
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
-        {office}
+        {OFFICE_FLAGS[office]||''} {office}
         <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
           color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
@@ -858,7 +981,7 @@ function LeavePanel({office,color,items,onAdd,onEdit,onDelete}){
         <div key={l.id} style={{display:'flex',alignItems:'center',padding:'5px 0',
           borderBottom:'1px solid #2a3050',fontSize:11,gap:6}}>
           <span style={{color:'#e2e8ff',flex:1}}>{l.name}</span>
-          <span style={{color:'#9aa3c2',fontSize:10}}>
+          <span style={{color:'#9aa3c2',fontSize:10,whiteSpace:'nowrap'}}>
             {l.start_date?fmtLeaveDate(l.start_date):''} – {l.end_date?fmtLeaveDate(l.end_date):''}
           </span>
           <button onClick={()=>onEdit(l)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 4px'}}>✏️</button>
@@ -875,7 +998,7 @@ function PHPanel({office,color,items,onAdd,onEdit,onDelete}){
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
-        {office}
+        {OFFICE_FLAGS[office]||''} {office}
         <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
           color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
@@ -884,7 +1007,7 @@ function PHPanel({office,color,items,onAdd,onEdit,onDelete}){
         <div key={p.id} style={{display:'flex',alignItems:'center',padding:'5px 0',
           borderBottom:'1px solid #2a3050',fontSize:11,gap:6}}>
           <span style={{color:'#9aa3c2',flex:1}}>📅 {p.name}</span>
-          <span style={{color:'#9aa3c2',fontSize:10}}>{p.iso_date?fmtPHDate(p.iso_date):p.display_date}</span>
+          <span style={{color:'#9aa3c2',fontSize:10,whiteSpace:'nowrap'}}>{p.iso_date?fmtPHDate(p.iso_date):p.display_date}</span>
           <button onClick={()=>onEdit(p)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 4px'}}>✏️</button>
           <button onClick={()=>onDelete(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#f75c5c',padding:'2px 4px',fontSize:13}}>✕</button>
         </div>
@@ -893,28 +1016,18 @@ function PHPanel({office,color,items,onAdd,onEdit,onDelete}){
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// PROJECTS TAB  (with sort)
-// ═══════════════════════════════════════════════════════════════════
-function ProjectsTab({projects,adminTasks,setProjectModal,setAdminTaskModal}){
+// ═════════════════════════════════════════════════════════════════════
+// PROJECTS TAB
+// ═════════════════════════════════════════════════════════════════════
+function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectModal,setAdminTaskModal,withUndo}){
   const [pSort,setPSort]=useState({col:'job',dir:1})
   const [aSort,setASort]=useState({col:'name',dir:1})
-
-  function sortToggle(current,col,set){
-    if(current.col===col) set({col,dir:-current.dir})
-    else set({col,dir:1})
-  }
-  const sortedProj=[...projects].sort((a,b)=>{
-    const av=(a[pSort.col]||'').toLowerCase(),bv=(b[pSort.col]||'').toLowerCase()
-    return av<bv?-pSort.dir:av>bv?pSort.dir:0
-  })
-  const sortedAdmin=[...adminTasks].sort((a,b)=>{
-    const av=(a[aSort.col]||'').toLowerCase(),bv=(b[aSort.col]||'').toLowerCase()
-    return av<bv?-aSort.dir:av>bv?aSort.dir:0
-  })
-  const SH=({col,sort,onToggle,children})=>(
-    <th style={{...adminTh,cursor:'pointer',userSelect:'none'}} onClick={()=>onToggle(col)}>
-      {children}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
+  function tog(cur,col,set){ cur.col===col?set({col,dir:-cur.dir}):set({col,dir:1}) }
+  const sp=[...projects].sort((a,b)=>{ const av=(a[pSort.col]||'').toLowerCase(),bv=(b[pSort.col]||'').toLowerCase(); return av<bv?-pSort.dir:av>bv?pSort.dir:0 })
+  const sa=[...adminTasks].sort((a,b)=>{ const av=(a[aSort.col]||'').toLowerCase(),bv=(b[aSort.col]||'').toLowerCase(); return av<bv?-aSort.dir:av>bv?aSort.dir:0 })
+  const SH=({col,sort,onTog,ch})=>(
+    <th style={{...adminTh,cursor:'pointer',userSelect:'none'}} onClick={()=>onTog(col)}>
+      {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
     </th>
   )
   return(
@@ -922,19 +1035,22 @@ function ProjectsTab({projects,adminTasks,setProjectModal,setAdminTaskModal}){
       <AdminSection title="🏗 Active Projects" onAdd={()=>setProjectModal({})}>
         <table style={adminTableStyle}><thead><tr>
           <th style={adminTh}>Colour</th>
-          <SH col="job" sort={pSort} onToggle={c=>sortToggle(pSort,c,setPSort)}>Job #</SH>
-          <SH col="name" sort={pSort} onToggle={c=>sortToggle(pSort,c,setPSort)}>Project Name</SH>
-          <SH col="status" sort={pSort} onToggle={c=>sortToggle(pSort,c,setPSort)}>Status</SH>
+          <SH col="job" sort={pSort} onTog={c=>tog(pSort,c,setPSort)} ch="Job #" />
+          <SH col="name" sort={pSort} onTog={c=>tog(pSort,c,setPSort)} ch="Project Name" />
+          <SH col="status" sort={pSort} onTog={c=>tog(pSort,c,setPSort)} ch="Status" />
           <th style={adminTh}>Actions</th>
         </tr></thead><tbody>
-          {sortedProj.map(p=>(
+          {sp.map(p=>(
             <tr key={p.id} style={{borderBottom:'1px solid #2a3050'}}>
               <td style={adminTd}><span style={{width:12,height:12,borderRadius:'50%',background:p.color,display:'inline-block'}} /></td>
               <td style={adminTd}>{p.job}</td><td style={adminTd}>{p.name}</td>
               <td style={adminTd}><StatusBadge s={p.status} /></td>
               <td style={adminTd}>
                 <button onClick={()=>setProjectModal(p)} style={iconBtn}>✏️</button>
-                <button onClick={async()=>await supabase.from('projects').delete().eq('id',p.id)} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+                <button onClick={async()=>{await withUndo(async()=>{
+                  await supabase.from('projects').delete().eq('id',p.id)
+                  const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[])
+                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
               </td>
             </tr>
           ))}
@@ -943,17 +1059,20 @@ function ProjectsTab({projects,adminTasks,setProjectModal,setAdminTaskModal}){
       <AdminSection title="⚙️ Admin & Recurring Tasks" onAdd={()=>setAdminTaskModal({})}>
         <table style={adminTableStyle}><thead><tr>
           <th style={adminTh}>Colour</th>
-          <SH col="name" sort={aSort} onToggle={c=>sortToggle(aSort,c,setASort)}>Task Name</SH>
-          <SH col="cat" sort={aSort} onToggle={c=>sortToggle(aSort,c,setASort)}>Category</SH>
+          <SH col="name" sort={aSort} onTog={c=>tog(aSort,c,setASort)} ch="Task Name" />
+          <SH col="cat" sort={aSort} onTog={c=>tog(aSort,c,setASort)} ch="Category" />
           <th style={adminTh}>Actions</th>
         </tr></thead><tbody>
-          {sortedAdmin.map(a=>(
+          {sa.map(a=>(
             <tr key={a.id} style={{borderBottom:'1px solid #2a3050'}}>
               <td style={adminTd}><span style={{width:12,height:12,borderRadius:'50%',background:a.color,display:'inline-block'}} /></td>
               <td style={adminTd}>{a.name}</td><td style={adminTd}>{a.cat}</td>
               <td style={adminTd}>
                 <button onClick={()=>setAdminTaskModal(a)} style={iconBtn}>✏️</button>
-                <button onClick={async()=>await supabase.from('admin_tasks').delete().eq('id',a.id)} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+                <button onClick={async()=>{await withUndo(async()=>{
+                  await supabase.from('admin_tasks').delete().eq('id',a.id)
+                  const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
+                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
               </td>
             </tr>
           ))}
@@ -963,43 +1082,47 @@ function ProjectsTab({projects,adminTasks,setProjectModal,setAdminTaskModal}){
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// TEAM TAB (with sort)
-// ═══════════════════════════════════════════════════════════════════
-function TeamTab({teamMembers,setTeamMembers,setMemberModal}){
+// ═════════════════════════════════════════════════════════════════════
+// TEAM TAB — bug fix: use sort.col not col in sort function
+// ═════════════════════════════════════════════════════════════════════
+function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo}){
   const [sort,setSort]=useState({col:'office',dir:1})
   function toggle(col){ setSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
   const sorted=[...teamMembers].sort((a,b)=>{
-    const av=(col==='sort_order'?a.sort_order:(a[sort.col]||'')).toString().toLowerCase()
-    const bv=(col==='sort_order'?b.sort_order:(b[sort.col]||'')).toString().toLowerCase()
+    const av=(sort.col==='sort_order'?String(a.sort_order):(a[sort.col]||'')).toLowerCase()
+    const bv=(sort.col==='sort_order'?String(b.sort_order):(b[sort.col]||'')).toLowerCase()
     return av<bv?-sort.dir:av>bv?sort.dir:0
   })
-  const SH=({col,children})=>(
+  const SH=({col,ch})=>(
     <th style={{...adminTh,cursor:'pointer',userSelect:'none'}} onClick={()=>toggle(col)}>
-      {children}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
+      {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
     </th>
   )
   return(
     <AdminSection title="👥 Team Members" onAdd={()=>setMemberModal({})}>
       <table style={adminTableStyle}><thead><tr>
-        <SH col="name">Name</SH><SH col="role">Role</SH>
-        <SH col="office">Office</SH><SH col="sort_order">Order</SH>
+        <SH col="name" ch="Name" /><SH col="role" ch="Role" />
+        <SH col="office" ch="Office" /><SH col="sort_order" ch="Order" />
         <th style={adminTh}>Actions</th>
       </tr></thead><tbody>
-        {sorted.map((m,i)=>(
+        {sorted.map(m=>(
           <tr key={m.id} style={{borderBottom:'1px solid #2a3050'}}>
             <td style={adminTd}><strong>{m.name}</strong></td>
             <td style={adminTd}>{m.role}</td>
-            <td style={adminTd}><span style={{padding:'2px 8px',borderRadius:10,fontSize:10,
-              border:`1px solid ${getOfficeColor(m.office)}`,color:getOfficeColor(m.office)}}>{m.office}</span></td>
+            <td style={adminTd}>
+              <span style={{padding:'2px 8px',borderRadius:10,fontSize:10,
+                border:`1px solid ${getOfficeColor(m.office)}`,color:getOfficeColor(m.office)}}>
+                {OFFICE_FLAGS[m.office]||''} {m.office}
+              </span>
+            </td>
             <td style={{...adminTd,color:'#5a6380',fontSize:11}}>{m.sort_order}</td>
             <td style={adminTd}>
               <button onClick={()=>setMemberModal(m)} style={iconBtn}>✏️</button>
-              <button onClick={async()=>{
+              <button onClick={async()=>{await withUndo(async()=>{
                 await supabase.from('team_members').delete().eq('id',m.id)
                 const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
                 setTeamMembers(r.data||[])
-              }} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+              })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
             </td>
           </tr>
         ))}
@@ -1035,9 +1158,9 @@ const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:'#9aa3c2',f
 const adminTd={padding:'8px 14px',verticalAlign:'middle'}
 const iconBtn={background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 6px',fontSize:13}
 
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 // MODALS
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast}){
   const {name,dateStr,entry}=modal
   const [pid,setPid]=useState(()=>{
@@ -1047,7 +1170,8 @@ function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast
     if(!entry.pid&&entry.task) return '__custom__'
     return entry.pid||''
   })
-  const [customTask,setCustomTask]=useState(entry&&!entry.pid&&entry.task&&entry.task!=='Annual Leave'&&entry.task!=='Sick Leave'?entry.task:'')
+  const [customTask,setCustomTask]=useState(
+    entry&&!entry.pid&&entry.task&&entry.task!=='Annual Leave'&&entry.task!=='Sick Leave'?entry.task:'')
   const [wtype,setWtype]=useState(entry?.wtype||'modelling')
   const [endDate,setEndDate]=useState(entry?.end_date||dateStr)
   const [notes,setNotes]=useState(entry?.notes||'')
