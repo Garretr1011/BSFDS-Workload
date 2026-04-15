@@ -241,20 +241,24 @@ export default function App() {
     getActiveTask(name,ds,tasks,upcomingLeave,upcomingPH,teamMembers),
     [tasks,upcomingLeave,upcomingPH,teamMembers])
 
-  // ── Stats ──
+  // ── Stats — filtered by office (not by project) ──
+  const statMembers = officeFilter === 'all'
+    ? teamMembers
+    : teamMembers.filter(m => m.office === officeFilter)
+
   const statWorkdays=[]
   for(let i=0;i<statWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) statWorkdays.push(d) }
   let unassigned=0,assigned=0,totalPossible=0
-  teamMembers.forEach(({name})=>{
+  statMembers.forEach(({name})=>{
     statWorkdays.forEach(d=>{ totalPossible++; if(getActive(name,fmtDate(d))) assigned++; else unassigned++ })
   })
   const utilPct=totalPossible>0?Math.round(assigned/totalPossible*100):0
 
-  // Leave stat (separate week toggle)
+  // Leave stat (separate week toggle, also filtered by office)
   const leaveStatWorkdays=[]
   for(let i=0;i<leaveStatWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) leaveStatWorkdays.push(d) }
   const onLeaveSet=new Set()
-  teamMembers.forEach(({name})=>{
+  statMembers.forEach(({name})=>{
     leaveStatWorkdays.forEach(d=>{ if(getActive(name,fmtDate(d))?.entry?.wtype==='leave') onLeaveSet.add(name) })
   })
   const onLeave=onLeaveSet.size
@@ -331,28 +335,32 @@ export default function App() {
       if (newStart > newEnd) newEnd = newStart
 
       if (delta < 0) {
-        // Extending start backwards — handle conflict at newStart
-        const conflict = assignments.find(a => a.member_name === name && a.start_date === newStart)
-        if (conflict) await supabase.from('task_assignments').delete().eq('id', conflict.id)
-        // Also handle any task whose span covers newStart (spanning task)
-        const spanning = assignments.find(a =>
-          a.member_name === name && a.start_date < newStart && a.end_date >= newStart && a.id !== entry.id
-        )
-        if (spanning) {
-          // Shrink spanning task's end by 1 day (move end to day before newStart)
-          let newSpanEnd = addDays(parseLocalDate(newStart), -1)
-          while (isWeekend(newSpanEnd)) newSpanEnd = addDays(newSpanEnd, -1)
-          const newSpanEndDs = fmtDate(newSpanEnd)
-          if (newSpanEndDs < spanning.start_date) {
-            await supabase.from('task_assignments').delete().eq('id', spanning.id)
-          } else {
-            await supabase.from('task_assignments').update({
-              end_date: newSpanEndDs, updated_at: new Date().toISOString()
-            }).eq('id', spanning.id)
+        // Extending start backwards — find whatever task is active on newStart
+        const adjActive = getActive(name, newStart)
+        if (adjActive && !adjActive.isVirtual && adjActive.startDs !== startDs) {
+          const adj = assignments.find(a => a.member_name === name && a.start_date === adjActive.startDs)
+          if (adj) {
+            const adjDur = Math.round((parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000)
+            if (adjDur === 0) {
+              await supabase.from('task_assignments').delete().eq('id', adj.id)
+            } else {
+              // Shrink adjacent task's end back by 1 workday
+              let newAdjEnd = addDays(parseLocalDate(newStart), -1)
+              while (isWeekend(newAdjEnd)) newAdjEnd = addDays(newAdjEnd, -1)
+              const newAdjEndDs = fmtDate(newAdjEnd)
+              if (newAdjEndDs < adj.start_date) {
+                await supabase.from('task_assignments').delete().eq('id', adj.id)
+              } else {
+                await supabase.from('task_assignments').update({
+                  end_date: newAdjEndDs, updated_at: new Date().toISOString()
+                }).eq('id', adj.id)
+              }
+            }
           }
         }
       }
       // Shrinking start forward — nothing adjacent to clear
+
     } else {
       let d = parseLocalDate(entry.end_date)
       do { d = addDays(d, delta) } while (isWeekend(d))
@@ -360,27 +368,27 @@ export default function App() {
       if (newEnd < newStart) newStart = newEnd
 
       if (delta > 0) {
-        // Extending end forward — find the task that starts on the next workday
-        const conflict = assignments.find(a => a.member_name === name && a.start_date === newEnd && a.id !== entry.id)
-        if (conflict) {
-          const conflictDur = Math.round(
-            (parseLocalDate(conflict.end_date) - parseLocalDate(conflict.start_date)) / 86400000
-          )
-          if (conflictDur === 0) {
-            // 1-day task → delete it entirely
-            await supabase.from('task_assignments').delete().eq('id', conflict.id)
-          } else {
-            // Multi-day task → shrink by moving start_date forward 1 workday
-            let newConflictStart = addDays(parseLocalDate(conflict.start_date), 1)
-            while (isWeekend(newConflictStart)) newConflictStart = addDays(newConflictStart, 1)
-            await supabase.from('task_assignments').update({
-              start_date: fmtDate(newConflictStart), updated_at: new Date().toISOString()
-            }).eq('id', conflict.id)
+        // Extending end forward — find whatever task is active on newEnd
+        const adjActive = getActive(name, newEnd)
+        if (adjActive && !adjActive.isVirtual && adjActive.startDs !== startDs) {
+          const adj = assignments.find(a => a.member_name === name && a.start_date === adjActive.startDs)
+          if (adj) {
+            const adjDur = Math.round((parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000)
+            if (adjDur === 0) {
+              // 1-day task → delete entirely
+              await supabase.from('task_assignments').delete().eq('id', adj.id)
+            } else {
+              // Multi-day task → shrink by moving start_date forward 1 workday
+              let newAdjStart = addDays(parseLocalDate(newEnd), 1)
+              while (isWeekend(newAdjStart)) newAdjStart = addDays(newAdjStart, 1)
+              await supabase.from('task_assignments').update({
+                start_date: fmtDate(newAdjStart), updated_at: new Date().toISOString()
+              }).eq('id', adj.id)
+            }
           }
         }
-      } else {
-        // Shrinking end backward — nothing adjacent to clear
       }
+      // Shrinking end backward — nothing adjacent to clear
     }
 
     // Delete old record if start date changed
@@ -868,8 +876,8 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
         </div>
       </div>
 
-      {/* Grid */}
-      <div style={{overflowX:'auto',paddingBottom:10}}>
+      {/* Grid — sticky header */}
+      <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 320px)',paddingBottom:10}}>
         <table style={{width:'100%',minWidth:900,borderCollapse:'collapse',tableLayout:'fixed'}}>
           <colgroup>
             <col style={{width:155}} />
@@ -878,8 +886,8 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
             {week2Work.map((_,i)=><col key={i} />)}
             <col style={{width:26}} />
           </colgroup>
-          <thead id="grid-thead"><tr>
-            <th style={thStyle}>Team Member</th>
+          <thead id="grid-thead" style={{position:'sticky',top:0,zIndex:10}}><tr>
+            <th style={{...thStyle,position:'sticky',left:0,zIndex:11}}>Team Member</th>
             {week1Work.map((d,i)=>{
               const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
               return(
@@ -1110,7 +1118,8 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
       onDragOver={e=>e.preventDefault()} onDrop={onRowDrop}
       style={{outline:isDragTarget?'1px dashed #4f8ef7':'none'}}
       onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
-      <td style={{background:'#1e2335',border:'1px solid #2a3050',padding:'6px 8px 6px 12px',verticalAlign:'middle'}}>
+      <td style={{background:'#1e2335',border:'1px solid #2a3050',padding:'6px 8px 6px 12px',
+        verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{cursor:'grab',color:'#5a6380',fontSize:12,opacity:hovered?1:0,transition:'opacity .15s',userSelect:'none'}}>⠿</span>
           <div style={{flex:1,minWidth:0}}>
