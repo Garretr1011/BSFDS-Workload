@@ -790,8 +790,8 @@ export default function App() {
             const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
           }); setPhModal(null)
         }} />}
-      </div>{/* /maxWidth */}
-      </div>{/* /paddingTop */}
+      </div>
+      </div>
     </div>
   )
 }
@@ -859,7 +859,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
         border:`1px solid ${active?color:'#2a3050'}`,
         background:active?`${color}22`:'transparent',
         color:active?color:'#9aa3c2',display:'flex',alignItems:'center',gap:4}}>
-      {active?'✕ clear':'⬡ filter'} {children}
+      {active?'x clear':'filter'} {children}
     </button>
   )
 
