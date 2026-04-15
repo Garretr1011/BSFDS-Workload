@@ -41,11 +41,13 @@ export function getMondayOf(d) {
   const day = dt.getDay(); dt.setDate(dt.getDate()+(day===0?-6:1-day)); return dt
 }
 
-export function getWeekDays(weekStart) {
-  return Array.from({length:14},(_,i)=>addDays(weekStart,i))
+export function getWeekDays(weekStart, numWeeks=2) {
+  return Array.from({length:numWeeks*7},(_,i)=>addDays(weekStart,i))
 }
 
-export const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+// DAY_SHORT extended to cover 4 weeks (28 days = Mon..Sun repeated 4x)
+const _ds = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+export const DAY_SHORT = [..._ds,..._ds,..._ds,..._ds]
 
 // Public holiday always wins — check this before anything else
 export function getPHForDate(dateStr, office, upcomingPH) {
