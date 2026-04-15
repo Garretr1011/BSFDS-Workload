@@ -318,45 +318,76 @@ export default function App() {
     if(existing){ await supabase.from('task_assignments').delete().eq('id',existing.id); await reloadAssignments() }
   }
 
-  // ── Arrow date adjustment — consumes adjacent occupied cells ──
-  async function adjustTaskDate(name,startDs,which,delta) {
-    const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
+  // ── Arrow date adjustment — shrinks adjacent task, or deletes if 1-day ──
+  async function adjustTaskDate(name, startDs, which, delta) {
+    const entry = tasks[name]?.[startDs]?.[0]; if (!entry) return
     await pushUndo()
-    let newStart=startDs, newEnd=entry.end_date
+    let newStart = startDs, newEnd = entry.end_date
 
-    if(which==='start') {
-      let d=parseLocalDate(startDs)
-      do { d=addDays(d,delta) } while(isWeekend(d))
-      newStart=fmtDate(d)
-      if(newStart>newEnd) newEnd=newStart
-      // If shrinking start forward, nothing to clear
-      // If extending start back, delete any task that starts on the new start date
-      if(delta<0) {
-        const conflict=assignments.find(a=>a.member_name===name&&a.start_date===newStart)
-        if(conflict) await supabase.from('task_assignments').delete().eq('id',conflict.id)
-      }
-    } else {
-      let d=parseLocalDate(entry.end_date)
-      do { d=addDays(d,delta) } while(isWeekend(d))
-      newEnd=fmtDate(d)
-      if(newEnd<newStart) newStart=newEnd
-      // If extending end forward, delete any task that starts on the new end date
-      if(delta>0) {
-        const conflict=assignments.find(a=>a.member_name===name&&a.start_date===newEnd)
-        if(conflict) await supabase.from('task_assignments').delete().eq('id',conflict.id)
-        // Also delete any task whose start is between old end and new end
-        const between=assignments.filter(a=>
-          a.member_name===name && a.start_date>entry.end_date && a.start_date<=newEnd && a.id!==entry.id
+    if (which === 'start') {
+      let d = parseLocalDate(startDs)
+      do { d = addDays(d, delta) } while (isWeekend(d))
+      newStart = fmtDate(d)
+      if (newStart > newEnd) newEnd = newStart
+
+      if (delta < 0) {
+        // Extending start backwards — handle conflict at newStart
+        const conflict = assignments.find(a => a.member_name === name && a.start_date === newStart)
+        if (conflict) await supabase.from('task_assignments').delete().eq('id', conflict.id)
+        // Also handle any task whose span covers newStart (spanning task)
+        const spanning = assignments.find(a =>
+          a.member_name === name && a.start_date < newStart && a.end_date >= newStart && a.id !== entry.id
         )
-        for(const b of between) await supabase.from('task_assignments').delete().eq('id',b.id)
+        if (spanning) {
+          // Shrink spanning task's end by 1 day (move end to day before newStart)
+          let newSpanEnd = addDays(parseLocalDate(newStart), -1)
+          while (isWeekend(newSpanEnd)) newSpanEnd = addDays(newSpanEnd, -1)
+          const newSpanEndDs = fmtDate(newSpanEnd)
+          if (newSpanEndDs < spanning.start_date) {
+            await supabase.from('task_assignments').delete().eq('id', spanning.id)
+          } else {
+            await supabase.from('task_assignments').update({
+              end_date: newSpanEndDs, updated_at: new Date().toISOString()
+            }).eq('id', spanning.id)
+          }
+        }
+      }
+      // Shrinking start forward — nothing adjacent to clear
+    } else {
+      let d = parseLocalDate(entry.end_date)
+      do { d = addDays(d, delta) } while (isWeekend(d))
+      newEnd = fmtDate(d)
+      if (newEnd < newStart) newStart = newEnd
+
+      if (delta > 0) {
+        // Extending end forward — find the task that starts on the next workday
+        const conflict = assignments.find(a => a.member_name === name && a.start_date === newEnd && a.id !== entry.id)
+        if (conflict) {
+          const conflictDur = Math.round(
+            (parseLocalDate(conflict.end_date) - parseLocalDate(conflict.start_date)) / 86400000
+          )
+          if (conflictDur === 0) {
+            // 1-day task → delete it entirely
+            await supabase.from('task_assignments').delete().eq('id', conflict.id)
+          } else {
+            // Multi-day task → shrink by moving start_date forward 1 workday
+            let newConflictStart = addDays(parseLocalDate(conflict.start_date), 1)
+            while (isWeekend(newConflictStart)) newConflictStart = addDays(newConflictStart, 1)
+            await supabase.from('task_assignments').update({
+              start_date: fmtDate(newConflictStart), updated_at: new Date().toISOString()
+            }).eq('id', conflict.id)
+          }
+        }
+      } else {
+        // Shrinking end backward — nothing adjacent to clear
       }
     }
 
     // Delete old record if start date changed
-    if(newStart!==startDs)
-      await supabase.from('task_assignments').delete().eq('member_name',name).eq('start_date',startDs)
+    if (newStart !== startDs)
+      await supabase.from('task_assignments').delete().eq('member_name', name).eq('start_date', startDs)
 
-    await saveTask(name,newStart,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
+    await saveTask(name, newStart, entry.pid, entry.task, entry.wtype, newEnd, entry.notes, true)
   }
 
   // ── Drag resize ──
@@ -955,9 +986,13 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
   const [hovered,setHovered]=useState(false)
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
 
+  // Pre-compute all workdays for arrow visibility checks
+  const allWorkDays = [...week1Work, ...week2Work]
+
   function renderWeek(workDays){
     const cells=[]; let i=0
     const todayDs=fmtDate(new Date())
+
     while(i<workDays.length){
       const d=workDays[i],ds=fmtDate(d)
       const isToday=ds===todayDs
@@ -974,11 +1009,43 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
         ); i++; continue
       }
       const {entry,startDs,isVirtual}=active
+
+      // Count span within this week segment
       let span=1,j=i+1
       while(j<workDays.length){
         const nA=getActive(member.name,fmtDate(workDays[j]))
         if(nA&&nA.startDs===startDs&&JSON.stringify(nA.entry)===JSON.stringify(entry)){span++;j++}else break
       }
+
+      // ── Arrow visibility ──
+      // Start arrows: show only on the very first workday cell of this task across both weeks.
+      // That is: no earlier workday in allWorkDays has this same task active.
+      const showStartArrows = !isVirtual && (() => {
+        for (const wd of allWorkDays) {
+          const wds = fmtDate(wd)
+          if (wds === ds) return true   // reached current cell first — this IS the first
+          const a = getActive(member.name, wds)
+          if (a && a.startDs === startDs) return false  // an earlier cell has this task
+        }
+        return true
+      })()
+
+      // End arrows: show only on the very last workday cell of this task across both weeks.
+      // That is: no later workday in allWorkDays has this same task active.
+      const lastCellDs = fmtDate(workDays[j-1])
+      const showEndArrows = !isVirtual && (() => {
+        let foundLast = false
+        for (let k = allWorkDays.length-1; k >= 0; k--) {
+          const wds = fmtDate(allWorkDays[k])
+          const a = getActive(member.name, wds)
+          if (a && a.startDs === startDs) {
+            foundLast = (wds === lastCellDs)
+            break
+          }
+        }
+        return foundLast
+      })()
+
       const color=['leave','ph'].includes(entry.wtype)?null:getProjectColor(entry.pid,projects,adminTasks)
       let bg='transparent',bc='#4f8ef7'
       if(entry.wtype==='leave'){bg='rgba(247,92,92,.13)';bc='#f75c5c'}
@@ -992,13 +1059,12 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
           style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bg,borderLeft:`3px solid ${bc}`}}
           onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry})}
           onMouseDown={!isVirtual?(e=>{
-            // Don't start copy drag if the click was on an arrow button
             if(e.target.closest('button')) return
             if(e.button===0) startCopy(e,member.name,startDs)
           }):undefined}>
           <div style={{padding:'4px 6px',display:'flex',alignItems:'flex-start',gap:3,minHeight:52}}>
-            {/* Start date arrows */}
-            {!isVirtual&&(
+            {/* Start arrows — only on the very first rendered cell of this task */}
+            {showStartArrows&&(
               <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
                 <button title="Move start earlier"
                   onMouseDown={e=>e.stopPropagation()}
@@ -1017,8 +1083,8 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
                 <div style={{fontSize:9,color:'#9aa3c2',fontStyle:'italic',marginTop:1}}>{entry.wtype}</div>
               )}
             </div>
-            {/* End date arrows */}
-            {!isVirtual&&(
+            {/* End arrows — only on the very last rendered cell of this task */}
+            {showEndArrows&&(
               <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
                 <button title="Move end earlier"
                   onMouseDown={e=>e.stopPropagation()}
