@@ -328,6 +328,24 @@ export default function App() {
     await pushUndo()
     let newStart = startDs, newEnd = entry.end_date
 
+    // Helper: find the task record from assignments that occupies a given date for this person
+    // (ignores the expanding task itself, ignores virtual PH/leave)
+    function findOccupant(dateStr) {
+      // Exact start on that date
+      let adj = assignments.find(a =>
+        a.member_name === name && a.start_date === dateStr && a.start_date !== startDs
+      )
+      if (adj) return adj
+      // Spanning task that covers dateStr
+      adj = assignments.find(a =>
+        a.member_name === name &&
+        a.start_date < dateStr &&
+        a.end_date >= dateStr &&
+        a.start_date !== startDs
+      )
+      return adj || null
+    }
+
     if (which === 'start') {
       let d = parseLocalDate(startDs)
       do { d = addDays(d, delta) } while (isWeekend(d))
@@ -335,31 +353,29 @@ export default function App() {
       if (newStart > newEnd) newEnd = newStart
 
       if (delta < 0) {
-        // Extending start backwards — find whatever task is active on newStart
-        const adjActive = getActive(name, newStart)
-        if (adjActive && !adjActive.isVirtual && adjActive.startDs !== startDs) {
-          const adj = assignments.find(a => a.member_name === name && a.start_date === adjActive.startDs)
-          if (adj) {
-            const adjDur = Math.round((parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000)
-            if (adjDur === 0) {
+        // Extending start backwards — handle whatever occupies newStart
+        const adj = findOccupant(newStart)
+        if (adj) {
+          const adjDur = Math.round(
+            (parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000
+          )
+          if (adjDur === 0) {
+            await supabase.from('task_assignments').delete().eq('id', adj.id)
+          } else {
+            // Shrink adj end to day before newStart
+            let newAdjEnd = addDays(parseLocalDate(newStart), -1)
+            while (isWeekend(newAdjEnd)) newAdjEnd = addDays(newAdjEnd, -1)
+            const newAdjEndDs = fmtDate(newAdjEnd)
+            if (newAdjEndDs < adj.start_date) {
               await supabase.from('task_assignments').delete().eq('id', adj.id)
             } else {
-              // Shrink adjacent task's end back by 1 workday
-              let newAdjEnd = addDays(parseLocalDate(newStart), -1)
-              while (isWeekend(newAdjEnd)) newAdjEnd = addDays(newAdjEnd, -1)
-              const newAdjEndDs = fmtDate(newAdjEnd)
-              if (newAdjEndDs < adj.start_date) {
-                await supabase.from('task_assignments').delete().eq('id', adj.id)
-              } else {
-                await supabase.from('task_assignments').update({
-                  end_date: newAdjEndDs, updated_at: new Date().toISOString()
-                }).eq('id', adj.id)
-              }
+              await supabase.from('task_assignments').update({
+                end_date: newAdjEndDs, updated_at: new Date().toISOString()
+              }).eq('id', adj.id)
             }
           }
         }
       }
-      // Shrinking start forward — nothing adjacent to clear
 
     } else {
       let d = parseLocalDate(entry.end_date)
@@ -368,32 +384,37 @@ export default function App() {
       if (newEnd < newStart) newStart = newEnd
 
       if (delta > 0) {
-        // Extending end forward — find whatever task is active on newEnd
-        const adjActive = getActive(name, newEnd)
-        if (adjActive && !adjActive.isVirtual && adjActive.startDs !== startDs) {
-          const adj = assignments.find(a => a.member_name === name && a.start_date === adjActive.startDs)
-          if (adj) {
-            const adjDur = Math.round((parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000)
-            if (adjDur === 0) {
-              // 1-day task → delete entirely
+        // Extending end forward — handle whatever occupies newEnd
+        const adj = findOccupant(newEnd)
+        if (adj) {
+          const adjDur = Math.round(
+            (parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000
+          )
+          if (adjDur === 0) {
+            // 1-day task → delete entirely
+            await supabase.from('task_assignments').delete().eq('id', adj.id)
+          } else {
+            // Multi-day task → shrink: move start_date forward 1 workday
+            let newAdjStart = addDays(parseLocalDate(newEnd), 1)
+            while (isWeekend(newAdjStart)) newAdjStart = addDays(newAdjStart, 1)
+            const newAdjStartDs = fmtDate(newAdjStart)
+            if (newAdjStartDs > adj.end_date) {
+              // Would collapse to nothing → delete
               await supabase.from('task_assignments').delete().eq('id', adj.id)
             } else {
-              // Multi-day task → shrink by moving start_date forward 1 workday
-              let newAdjStart = addDays(parseLocalDate(newEnd), 1)
-              while (isWeekend(newAdjStart)) newAdjStart = addDays(newAdjStart, 1)
               await supabase.from('task_assignments').update({
-                start_date: fmtDate(newAdjStart), updated_at: new Date().toISOString()
+                start_date: newAdjStartDs, updated_at: new Date().toISOString()
               }).eq('id', adj.id)
             }
           }
         }
       }
-      // Shrinking end backward — nothing adjacent to clear
     }
 
-    // Delete old record if start date changed
+    // Delete old record if start date changed (start arrow moved forward)
     if (newStart !== startDs)
-      await supabase.from('task_assignments').delete().eq('member_name', name).eq('start_date', startDs)
+      await supabase.from('task_assignments').delete()
+        .eq('member_name', name).eq('start_date', startDs)
 
     await saveTask(name, newStart, entry.pid, entry.task, entry.wtype, newEnd, entry.notes, true)
   }
@@ -876,8 +897,8 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
         </div>
       </div>
 
-      {/* Grid — sticky header */}
-      <div style={{overflowX:'auto',overflowY:'auto',maxHeight:'calc(100vh - 320px)',paddingBottom:10}}>
+      {/* Grid — tbody scrolls naturally with page; thead is sticky to viewport */}
+      <div style={{paddingBottom:10}}>
         <table style={{width:'100%',minWidth:900,borderCollapse:'collapse',tableLayout:'fixed'}}>
           <colgroup>
             <col style={{width:155}} />
