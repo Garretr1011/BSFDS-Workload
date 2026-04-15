@@ -791,7 +791,6 @@ export default function App() {
           }); setPhModal(null)
         }} />}
       </div>
-      </div>
     </div>
   )
 }
