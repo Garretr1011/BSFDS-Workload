@@ -153,7 +153,10 @@ export default function App() {
   const [weekStart, setWeekStart] = useState(()=>getMondayOf(new Date()))
   const [officeFilter, setOfficeFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
+  const [leaveFilter, setLeaveFilter] = useState(false)       // filter to on-leave members only
+  const [unassignedFilter, setUnassignedFilter] = useState(false) // filter to unassigned members only
   const [search, setSearch] = useState('')
+  const [gridWeeks, setGridWeeks] = useState(2)   // grid view duration: 2, 3 or 4
   const [statWeeks, setStatWeeks] = useState(2)
   const [leaveStatWeeks, setLeaveStatWeeks] = useState(1)
 
@@ -230,10 +233,13 @@ export default function App() {
     return ()=>channels.forEach(c=>supabase.removeChannel(c))
   },[reloadAssignments])
 
-  const days = getWeekDays(weekStart)
-  const week1Work = days.slice(0,5)
-  const week2Work = days.slice(7,12)
-  const allWorkdays = [...week1Work,...week2Work]
+  const days = getWeekDays(weekStart, gridWeeks)
+  // Build week segments: each week = [Mon..Fri] + [Sat,Sun]
+  const weekSegments = Array.from({length:gridWeeks},(_,w)=>({
+    work: days.slice(w*7, w*7+5),
+    weekend: days.slice(w*7+5, w*7+7),
+  }))
+  const allWorkdays = weekSegments.flatMap(s=>s.work)
   const allOffices = [...new Set([...CORE_OFFICES,...teamMembers.map(m=>m.office)])]
     .filter(o=>teamMembers.some(m=>m.office===o))
 
@@ -249,8 +255,15 @@ export default function App() {
   const statWorkdays=[]
   for(let i=0;i<statWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) statWorkdays.push(d) }
   let unassigned=0,assigned=0,totalPossible=0
+  const unassignedNames = new Set()
   statMembers.forEach(({name})=>{
-    statWorkdays.forEach(d=>{ totalPossible++; if(getActive(name,fmtDate(d))) assigned++; else unassigned++ })
+    let hasUnassigned=false
+    statWorkdays.forEach(d=>{
+      totalPossible++
+      if(getActive(name,fmtDate(d))) assigned++
+      else { unassigned++; hasUnassigned=true }
+    })
+    if(hasUnassigned) unassignedNames.add(name)
   })
   const utilPct=totalPossible>0?Math.round(assigned/totalPossible*100):0
 
@@ -606,8 +619,8 @@ export default function App() {
 
   // ── Export ──
   function exportSummary() {
-    const lines=['BSFDS Workload Summary (2 weeks)',
-      `Period: ${fmtDisplay(days[0])} to ${fmtDisplay(days[11])}`,
+    const lines=[`BSFDS Workload Summary (${gridWeeks} weeks)`,
+      `Period: ${fmtDisplay(allWorkdays[0])} to ${fmtDisplay(allWorkdays[allWorkdays.length-1])}`,
       `Generated: ${new Date().toLocaleString('en-AU')}`,'','═'.repeat(70),'']
     allOffices.forEach(office=>{
       lines.push(`[ ${office.toUpperCase()} ]`)
@@ -621,7 +634,7 @@ export default function App() {
     })
     const blob=new Blob([lines.join('\n')],{type:'text/plain'})
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob)
-    a.download=`BSFDS_Workload_${fmtDate(days[0])}.txt`; a.click()
+    a.download=`BSFDS_Workload_${fmtDate(allWorkdays[0])}.txt`; a.click()
   }
 
   if(loading) return(
@@ -636,6 +649,23 @@ export default function App() {
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)} />}
       {dragGhost&&<DragGhost x={dragGhost.x} y={dragGhost.y} text={dragGhost.text} isCopy={dragGhost.isCopy} />}
 
+      {/* Floating undo/redo bar — always visible at top of viewport */}
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:50,
+        display:'flex',justifyContent:'flex-end',gap:6,padding:'6px 24px',
+        background:'rgba(15,17,23,.92)',backdropFilter:'blur(8px)',
+        borderBottom:'1px solid #2a3050',pointerEvents:'none'}}>
+        <div style={{display:'flex',gap:6,pointerEvents:'all'}}>
+          <button onClick={undo} disabled={!canUndo} title="Undo"
+            style={{...btnBase,opacity:canUndo?1:.35,cursor:canUndo?'pointer':'default',
+              fontSize:11,padding:'4px 10px'}}>↩ Undo</button>
+          <button onClick={redo} disabled={!canRedo} title="Redo"
+            style={{...btnBase,opacity:canRedo?1:.35,cursor:canRedo?'pointer':'default',
+              fontSize:11,padding:'4px 10px'}}>↪ Redo</button>
+        </div>
+      </div>
+
+      {/* Push content down below the floating bar */}
+      <div style={{paddingTop:36}}>
       <div style={{maxWidth:1600,margin:'0 auto',padding:'16px 20px'}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
@@ -649,10 +679,6 @@ export default function App() {
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <button onClick={undo} disabled={!canUndo} title="Undo"
-              style={{...btnBase,opacity:canUndo?1:.4,cursor:canUndo?'pointer':'default'}}>↩ Undo</button>
-            <button onClick={redo} disabled={!canRedo} title="Redo"
-              style={{...btnBase,opacity:canRedo?1:.4,cursor:canRedo?'pointer':'default'}}>↪ Redo</button>
             <button className="btn" onClick={exportSummary}>↓ Export</button>
             <button className="btn" onClick={()=>window.print()}>Print</button>
           </div>
@@ -672,14 +698,18 @@ export default function App() {
 
         {tab==='workload'&&(
           <WorkloadTab
-            days={days} week1Work={week1Work} week2Work={week2Work} allWorkdays={allWorkdays}
+            days={days} weekSegments={weekSegments} allWorkdays={allWorkdays}
             weekStart={weekStart} setWeekStart={setWeekStart}
+            gridWeeks={gridWeeks} setGridWeeks={setGridWeeks}
             teamMembers={teamMembers} projects={projects} adminTasks={adminTasks}
             tasks={tasks} upcomingLeave={upcomingLeave} upcomingPH={upcomingPH}
             upcomingLeaveRows={upcomingLeaveRows} setUpcomingLeaveRows={setUpcomingLeaveRows}
             publicHolidayRows={publicHolidayRows} setPublicHolidayRows={setPublicHolidayRows}
             officeFilter={officeFilter} setOfficeFilter={setOfficeFilter}
             projectFilter={projectFilter} setProjectFilter={setProjectFilter}
+            leaveFilter={leaveFilter} setLeaveFilter={setLeaveFilter}
+            unassignedFilter={unassignedFilter} setUnassignedFilter={setUnassignedFilter}
+            onLeaveNames={onLeaveSet} unassignedNames={unassignedNames}
             activeProjectsInWindow={activeProjectsInWindow}
             search={search} setSearch={setSearch}
             allOffices={allOffices}
@@ -760,6 +790,8 @@ export default function App() {
             const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
           }); setPhModal(null)
         }} />}
+      </div>{/* /maxWidth */}
+      </div>{/* /paddingTop */}
     </div>
   )
 }
@@ -767,10 +799,13 @@ export default function App() {
 // ═════════════════════════════════════════════════════════════════════
 // WORKLOAD TAB
 // ═════════════════════════════════════════════════════════════════════
-function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStart,
+function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
+  gridWeeks,setGridWeeks,
   teamMembers,projects,adminTasks,tasks,upcomingLeave,upcomingPH,
   upcomingLeaveRows,setUpcomingLeaveRows,publicHolidayRows,setPublicHolidayRows,
-  officeFilter,setOfficeFilter,projectFilter,setProjectFilter,activeProjectsInWindow,
+  officeFilter,setOfficeFilter,projectFilter,setProjectFilter,
+  leaveFilter,setLeaveFilter,unassignedFilter,setUnassignedFilter,
+  onLeaveNames,unassignedNames,activeProjectsInWindow,
   search,setSearch,allOffices,onLeave,onLeaveHrs,leaveStatWeeks,setLeaveStatWeeks,
   unassigned,unassignedHrs,utilPct,statWeeks,setStatWeeks,
   getActive,setAssignModal,setLeaveModal,setPhModal,
@@ -798,6 +833,8 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
     if(officeFilter!=='all'&&m.office!==officeFilter) return false
     if(search&&!m.name.toLowerCase().includes(search.toLowerCase())) return false
     if(projectFilter!=='all'&&!allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===projectFilter)) return false
+    if(leaveFilter&&!onLeaveNames.has(m.name)) return false
+    if(unassignedFilter&&!unassignedNames.has(m.name)) return false
     return true
   })
   const officeGroups={}
@@ -815,27 +852,42 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
     </div>
   )
 
+  // Active-filter toggle button helper
+  const FilterToggleBtn=({active,onClick,color,children})=>(
+    <button onClick={onClick}
+      style={{marginTop:4,padding:'2px 8px',borderRadius:3,fontSize:10,cursor:'pointer',
+        border:`1px solid ${active?color:'#2a3050'}`,
+        background:active?`${color}22`:'transparent',
+        color:active?color:'#9aa3c2',display:'flex',alignItems:'center',gap:4}}>
+      {active?'✕ clear':'⬡ filter'} {children}
+    </button>
+  )
+
+  // Last workday of the grid (for nav label)
+  const lastDay = allWorkdays[allWorkdays.length-1]
+
   return(
     <div>
       {/* Stat cards */}
       <div style={{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
-        {/* Total Team */}
         <StatCard label="Total Team" color="#4f8ef7">
           <span style={{fontSize:26,fontWeight:700}}>{teamMembers.length}</span>
         </StatCard>
-        {/* Per-office */}
         {allOffices.map(o=>(
           <StatCard key={o} label={<span style={{display:'flex',alignItems:'center',gap:4}}>{o} <OfficeFlag office={o} size={13} /></span>} color={OFFICE_COLORS[o]||'#b87fff'}>
             <span style={{fontSize:26,fontWeight:700}}>{teamMembers.filter(m=>m.office===o).length}</span>
           </StatCard>
         ))}
-        {/* Team Members On Leave */}
+        {/* On Leave card with filter toggle */}
         <StatCard label="Team Members On Leave" color="#f75c5c">
           <span style={{fontSize:26,fontWeight:700}}>{onLeave}</span>
           <div style={{fontSize:10,color:'#f75c5c',marginTop:2}}>{onLeaveHrs} hrs</div>
           <WeekToggle val={leaveStatWeeks} set={setLeaveStatWeeks} />
+          <FilterToggleBtn active={leaveFilter} onClick={()=>{setLeaveFilter(v=>!v);setUnassignedFilter(false)}} color="#f75c5c">
+            on leave
+          </FilterToggleBtn>
         </StatCard>
-        {/* Unassigned */}
+        {/* Unassigned card with filter toggle */}
         <StatCard label="Unassigned" color="#5a6380">
           <div style={{display:'flex',alignItems:'baseline',gap:6}}>
             <span style={{fontSize:26,fontWeight:700}}>{unassigned}</span>
@@ -843,6 +895,9 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
           </div>
           <div style={{fontSize:10,color:'#4ff7a2',marginTop:2}}>Utilisation {utilPct}%</div>
           <WeekToggle val={statWeeks} set={setStatWeeks} />
+          <FilterToggleBtn active={unassignedFilter} onClick={()=>{setUnassignedFilter(v=>!v);setLeaveFilter(false)}} color="#9aa3c2">
+            unassigned
+          </FilterToggleBtn>
         </StatCard>
       </div>
 
@@ -879,65 +934,70 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
         </div>
       )}
 
-      {/* Search + week nav */}
+      {/* Search + grid duration + week nav */}
       <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name..."
           style={{background:'#1e2335',border:'1px solid #2a3050',color:'#e2e8ff',
             padding:'6px 12px',borderRadius:4,fontSize:12,width:180}} />
+        {/* Grid duration toggle */}
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          <span style={{fontSize:10,color:'#9aa3c2',marginRight:2}}>View:</span>
+          {[2,3,4].map(w=>(
+            <button key={w} onClick={()=>setGridWeeks(w)}
+              style={{padding:'4px 10px',borderRadius:4,fontSize:11,cursor:'pointer',
+                border:'1px solid #2a3050',
+                background:gridWeeks===w?'#4f8ef7':'#181c27',
+                color:gridWeeks===w?'#fff':'#9aa3c2'}}>{w}W</button>
+          ))}
+        </div>
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}}>
           <button className="btn" onClick={()=>setWeekStart(w=>addDays(w,-7))}>← Prev</button>
           <div style={{fontSize:12,color:'#9aa3c2',textAlign:'center',minWidth:200}}>
             <strong style={{display:'block',fontSize:13,color:'#e2e8ff'}}>
-              {fmtDisplay(days[0])} – {fmtDisplay(days[11])}
+              {fmtDisplay(allWorkdays[0])} – {fmtDisplay(lastDay)}
             </strong>
-            <span>{days[0].toLocaleDateString('en-AU',{month:'short',year:'numeric'})}</span>
+            <span>{allWorkdays[0].toLocaleDateString('en-AU',{month:'short',year:'numeric'})}</span>
           </div>
           <button className="btn" onClick={()=>setWeekStart(w=>addDays(w,7))}>Next →</button>
           <button className="btn" onClick={()=>setWeekStart(getMondayOf(new Date()))}>Today</button>
         </div>
       </div>
 
-      {/* Grid — tbody scrolls naturally with page; thead is sticky to viewport */}
+      {/* Grid — multi-week, sticky header */}
       <div style={{paddingBottom:10}}>
         <table style={{width:'100%',minWidth:900,borderCollapse:'collapse',tableLayout:'fixed'}}>
           <colgroup>
             <col style={{width:155}} />
-            {week1Work.map((_,i)=><col key={i} />)}
-            <col style={{width:26}} />
-            {week2Work.map((_,i)=><col key={i} />)}
-            <col style={{width:26}} />
+            {weekSegments.flatMap((seg,wi)=>[
+              ...seg.work.map((_,i)=><col key={`w${wi}d${i}`} />),
+              <col key={`w${wi}ss`} style={{width:26}} />
+            ])}
           </colgroup>
-          <thead id="grid-thead" style={{position:'sticky',top:0,zIndex:10}}><tr>
+          <thead id="grid-thead" style={{position:'sticky',top:36,zIndex:10}}><tr>
             <th style={{...thStyle,position:'sticky',left:0,zIndex:11}}>Team Member</th>
-            {week1Work.map((d,i)=>{
-              const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
-              return(
-                <th key={i} data-date={ds} style={isToday?thStyleToday:thStyle}>
-                  {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
-                  <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[i]}</div>
-                  <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
-                </th>
-              )
-            })}
-            <th data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
-            {week2Work.map((d,i)=>{
-              const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
-              return(
-                <th key={i} data-date={ds} style={isToday?thStyleToday:thStyle}>
-                  {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
-                  <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[7+i]}</div>
-                  <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
-                </th>
-              )
-            })}
-            <th data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
+            {weekSegments.flatMap((seg,wi)=>[
+              ...seg.work.map((d,i)=>{
+                const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
+                const dayIdx=wi*7+i
+                return(
+                  <th key={ds} data-date={ds} style={isToday?thStyleToday:thStyle}>
+                    {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
+                    <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[dayIdx]}</div>
+                    <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
+                  </th>
+                )
+              }),
+              <th key={`ss${wi}`} data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,
+                fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
+            ])}
           </tr></thead>
           <tbody>
             {allOffices.map(office=>{
               const members=officeGroups[office]; if(!members?.length) return null
+              const colSpan = weekSegments.length * 6 + 1  // name + (5 work + 1 ss) * numWeeks
               return[
                 <tr key={`sec-${office}`}>
-                  <td colSpan={13} style={{fontFamily:'Syne,sans-serif',fontSize:10,fontWeight:700,
+                  <td colSpan={colSpan} style={{fontFamily:'Syne,sans-serif',fontSize:10,fontWeight:700,
                     letterSpacing:2,textTransform:'uppercase',padding:'6px 14px',
                     color:OFFICE_COLORS[office]||'#b87fff',background:'#181c27',
                     borderLeft:`3px solid ${OFFICE_COLORS[office]||'#b87fff'}`,
@@ -947,7 +1007,7 @@ function WorkloadTab({days,week1Work,week2Work,allWorkdays,weekStart,setWeekStar
                 </tr>,
                 ...members.map(m=>(
                   <MemberRow key={m.id} member={m}
-                    week1Work={week1Work} week2Work={week2Work}
+                    weekSegments={weekSegments} allWorkdays={allWorkdays}
                     getActive={getActive} projects={projects} adminTasks={adminTasks}
                     setAssignModal={setAssignModal}
                     startResize={startResize} startCopy={startCopy}
@@ -1010,13 +1070,13 @@ function SectionTitle({title}){
 }
 
 // ─── Member Row ───────────────────────────────────────────────────────
-function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
+function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,
   setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop}){
   const [hovered,setHovered]=useState(false)
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
 
-  // Pre-compute all workdays for arrow visibility checks
-  const allWorkDays = [...week1Work, ...week2Work]
+  // allWorkdays passed directly — used for arrow visibility checks
+  const allWorkDays = allWorkdays
 
   function renderWeek(workDays){
     const cells=[]; let i=0
@@ -1153,10 +1213,10 @@ function MemberRow({member,week1Work,week2Work,getActive,projects,adminTasks,
           </div>
         </div>
       </td>
-      {renderWeek(week1Work)}
-      <td style={{background:'#0a0d14',border:'1px solid #2a3050',width:26}} />
-      {renderWeek(week2Work)}
-      <td style={{background:'#0a0d14',border:'1px solid #2a3050',width:26}} />
+      {weekSegments.flatMap((seg,wi)=>[
+        ...renderWeek(seg.work),
+        <td key={`ss${wi}`} style={{background:'#0a0d14',border:'1px solid #2a3050',width:26}} />
+      ])}
     </tr>
   )
 }
