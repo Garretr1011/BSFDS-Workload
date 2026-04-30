@@ -8,57 +8,55 @@ import {
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
 
-// ── Theme tokens ──────────────────────────────────────────────────────
+// ── Theme tokens — Steel Blue Professional ────────────────────────────
 function makeTheme(mode) {
   const dark = mode === 'dark'
   return {
     mode,
     // Page
-    pageBg:        dark ? '#0f1117' : '#f0f2f7',
+    pageBg:         dark ? '#0d1b2e' : '#eef2f7',
     // Surfaces
-    surfacePrimary:dark ? '#181c27' : '#ffffff',
-    surfaceSecond: dark ? '#1e2335' : '#e8eaf2',
-    surfaceHover:  dark ? '#232840' : '#dde0ec',
-    surfaceToday:  dark ? '#181d2a' : '#dbeafe',
+    surfacePrimary: dark ? '#122038' : '#ffffff',
+    surfaceSecond:  dark ? '#152640' : '#e4eaf4',
+    surfaceHover:   dark ? '#1a3050' : '#d4ddf0',
+    surfaceToday:   dark ? '#1a3a6a' : '#dbeafe',
     // Borders
-    border:        dark ? '#3a4268' : '#d8dce8',
-    borderLight:   dark ? '#2a3050' : '#e2e5f0',
+    border:         dark ? '#1e3a5a' : '#c8d4e8',
+    borderLight:    dark ? '#1a3050' : '#d8e2f0',
     // Text
-    textPrimary:   dark ? '#ffffff' : '#1f2937',
-    textSecondary: dark ? '#c5cde8' : '#6b7280',
-    textMuted:     dark ? '#4a5280' : '#9ca3af',
-    textTab:       dark ? '#9aa3c2' : '#6b7280',
-    // Accents (same in both modes)
-    blue:    '#4f8ef7',
-    blueLight:dark?'rgba(79,142,247,.22)':'#dbeafe',
-    blueText:  dark ? '#ffffff' : '#1e3a5f',
-    red:     dark ? '#f87171' : '#dc2626',
-    redLight:  dark ? 'rgba(248,113,113,.18)' : '#fee2e2',
-    redText:   dark ? '#f87171' : '#7f1d1d',
-    green:   dark ? '#4ff7a2' : '#059669',
-    greenLight:dark?'rgba(79,247,162,.15)':'#d1fae5',
-    greenText: dark ? '#ffffff' : '#064e3b',
-    amber:   '#f7a24f',
-    amberLight:dark?'rgba(247,162,79,.13)':'#fef3c7',
-    amberText: dark ? '#f7a24f' : '#78350f',
-    gray:    dark ? '#5a6380' : '#6b7280',
-    grayLight: dark ? 'rgba(90,99,128,.13)' : '#f3f4f6',
+    textPrimary:    dark ? '#ffffff'  : '#0f2040',
+    textSecondary:  dark ? '#7aa8d8' : '#3a5a80',
+    textMuted:      dark ? '#2e5070' : '#7a9ab8',
+    textTab:        dark ? '#7aa8d8' : '#3a5a80',
+    // Accents
+    blue:           dark ? '#2e7dd1' : '#1a5fa8',
+    blueLight:      dark ? 'rgba(46,125,209,.22)' : '#dbeafe',
+    blueText:       dark ? '#c8dff5' : '#1e3a5f',
+    red:            dark ? '#e05555' : '#b91c1c',
+    redLight:       dark ? 'rgba(224,85,85,.15)'  : '#fee2e2',
+    redText:        dark ? '#e05555' : '#7f1d1d',
+    green:          dark ? '#3cb87a' : '#15803d',
+    greenLight:     dark ? 'rgba(60,184,122,.15)' : '#dcfce7',
+    greenText:      dark ? '#c8e8c8' : '#14532d',
+    amber:          dark ? '#f0a832' : '#b45309',
+    amberLight:     dark ? 'rgba(240,168,50,.15)' : '#fef3c7',
+    amberText:      dark ? '#f0c060' : '#78350f',
+    gray:           dark ? '#4d82b0' : '#4a6a8a',
+    grayLight:      dark ? 'rgba(77,130,176,.13)' : '#f0f4f8',
     // Floating bar
-    floatBg:   dark ? 'rgba(15,17,23,.92)' : 'rgba(240,242,247,.95)',
+    floatBg:        dark ? 'rgba(13,27,46,.93)' : 'rgba(238,242,247,.96)',
     // Modal
-    modalBg:   dark ? '#181c27' : '#ffffff',
-    modalOverlay: 'rgba(0,0,0,.6)',
-    // Tab active
-    tabActiveBorder: '#4f8ef7',
-    tabActiveColor:  '#4f8ef7',
+    modalBg:        dark ? '#122038' : '#ffffff',
+    modalOverlay:   'rgba(0,0,0,.65)',
+    // Tab
+    tabActiveBorder: dark ? '#2e7dd1' : '#1a5fa8',
+    tabActiveColor:  dark ? '#2e7dd1' : '#1a5fa8',
     // Section header
-    sectionBg: dark ? '#181c27' : '#eef0f8',
+    sectionBg:      dark ? '#122038' : '#e4eaf4',
     // Today column
-    todayBg:   dark ? '#1a2540' : '#dbeafe',
-    todayText: dark ? '#ffffff' : '#1e40af',
-    todayBorder: dark ? '#f87171' : '#dc2626',
-    // Stat card numbers
-    numFont: 'system-ui,-apple-system,sans-serif',
+    todayBg:        dark ? '#1a3a6a' : '#dbeafe',
+    todayText:      dark ? '#ffffff'  : '#1e40af',
+    todayBorder:    dark ? '#e05555' : '#b91c1c',
   }
 }
 
@@ -107,15 +105,32 @@ function Modal({ open, onClose, children, T }) {
   )
 }
 
-// ── Theme toggle button ────────────────────────────────────────────────
+// ── Theme toggle — pill switch ─────────────────────────────────────────
 function ThemeToggle({ T, onToggle }) {
   const dark = T.mode === 'dark'
   return (
     <button onClick={onToggle} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,
-        color:T.textSecondary,padding:'6px 12px',borderRadius:4,cursor:'pointer',
-        fontSize:12,fontFamily:'DM Mono,monospace',display:'flex',alignItems:'center',gap:6}}>
-      {dark ? '☀ Light' : '☾ Dark'}
+      style={{
+        display:'flex', alignItems:'center', gap:0,
+        background: dark ? '#0d1b2e' : '#e4eaf4',
+        border: `1px solid ${dark ? '#1e3a5a' : '#b8c8e0'}`,
+        borderRadius:20, padding:'3px 4px', cursor:'pointer',
+        transition:'all .2s', position:'relative', width:64, height:28,
+        flexShrink:0,
+      }}>
+      {/* Track label left — moon */}
+      <span style={{position:'absolute',left:8,fontSize:12,opacity:dark?1:0.3,transition:'opacity .2s',lineHeight:1}}>🌙</span>
+      {/* Track label right — sun */}
+      <span style={{position:'absolute',right:7,fontSize:12,opacity:dark?0.3:1,transition:'opacity .2s',lineHeight:1}}>☀️</span>
+      {/* Thumb */}
+      <span style={{
+        width:22, height:22, borderRadius:'50%',
+        background: dark ? '#2e7dd1' : '#1a5fa8',
+        position:'absolute',
+        left: dark ? 4 : 38,
+        transition:'left .2s cubic-bezier(.4,0,.2,1)',
+        boxShadow:'0 2px 6px rgba(0,0,0,.35)',
+      }} />
     </button>
   )
 }
