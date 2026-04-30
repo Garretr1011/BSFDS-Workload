@@ -8,55 +8,119 @@ import {
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
 
-// ── Theme tokens — Steel Blue Professional ────────────────────────────
+// ── Theme tokens — three modes: steel / dark / light ─────────────────
 function makeTheme(mode) {
-  const dark = mode === 'dark'
+  if (mode === 'steel') return {
+    mode,
+    pageBg:         '#0d1b2e',
+    surfacePrimary: '#122038',
+    surfaceSecond:  '#152640',
+    surfaceHover:   '#1a3050',
+    surfaceToday:   '#1a3a6a',
+    border:         '#1e3a5a',
+    borderLight:    '#1a3050',
+    textPrimary:    '#ffffff',
+    textSecondary:  '#7aa8d8',
+    textMuted:      '#2e5070',
+    textTab:        '#7aa8d8',
+    blue:           '#2e7dd1',
+    blueLight:      'rgba(46,125,209,.22)',
+    blueText:       '#c8dff5',
+    red:            '#e05555',
+    redLight:       'rgba(224,85,85,.15)',
+    redText:        '#e05555',
+    green:          '#3cb87a',
+    greenLight:     'rgba(60,184,122,.15)',
+    greenText:      '#c8e8c8',
+    amber:          '#f0a832',
+    amberLight:     'rgba(240,168,50,.15)',
+    amberText:      '#f0c060',
+    gray:           '#4d82b0',
+    grayLight:      'rgba(77,130,176,.13)',
+    floatBg:        'rgba(13,27,46,.93)',
+    modalBg:        '#122038',
+    modalOverlay:   'rgba(0,0,0,.65)',
+    tabActiveBorder:'#2e7dd1',
+    tabActiveColor: '#2e7dd1',
+    sectionBg:      '#122038',
+    todayBg:        '#1a3a6a',
+    todayText:      '#ffffff',
+    todayBorder:    '#e05555',
+  }
+  if (mode === 'dark') return {
+    mode,
+    pageBg:         '#0f1117',
+    surfacePrimary: '#181c27',
+    surfaceSecond:  '#1e2335',
+    surfaceHover:   '#232840',
+    surfaceToday:   '#181d2a',
+    border:         '#3a4268',
+    borderLight:    '#2a3050',
+    textPrimary:    '#ffffff',
+    textSecondary:  '#c5cde8',
+    textMuted:      '#4a5280',
+    textTab:        '#9aa3c2',
+    blue:           '#4f8ef7',
+    blueLight:      'rgba(79,142,247,.22)',
+    blueText:       '#ffffff',
+    red:            '#f87171',
+    redLight:       'rgba(248,113,113,.18)',
+    redText:        '#f87171',
+    green:          '#4ff7a2',
+    greenLight:     'rgba(79,247,162,.15)',
+    greenText:      '#ffffff',
+    amber:          '#f7a24f',
+    amberLight:     'rgba(247,162,79,.13)',
+    amberText:      '#f7a24f',
+    gray:           '#5a6380',
+    grayLight:      'rgba(90,99,128,.13)',
+    floatBg:        'rgba(15,17,23,.92)',
+    modalBg:        '#181c27',
+    modalOverlay:   'rgba(0,0,0,.6)',
+    tabActiveBorder:'#4f8ef7',
+    tabActiveColor: '#4f8ef7',
+    sectionBg:      '#181c27',
+    todayBg:        '#181d2a',
+    todayText:      '#ffffff',
+    todayBorder:    '#f87171',
+  }
+  // light
   return {
     mode,
-    // Page
-    pageBg:         dark ? '#0d1b2e' : '#eef2f7',
-    // Surfaces
-    surfacePrimary: dark ? '#122038' : '#ffffff',
-    surfaceSecond:  dark ? '#152640' : '#e4eaf4',
-    surfaceHover:   dark ? '#1a3050' : '#d4ddf0',
-    surfaceToday:   dark ? '#1a3a6a' : '#dbeafe',
-    // Borders
-    border:         dark ? '#1e3a5a' : '#c8d4e8',
-    borderLight:    dark ? '#1a3050' : '#d8e2f0',
-    // Text
-    textPrimary:    dark ? '#ffffff'  : '#0f2040',
-    textSecondary:  dark ? '#7aa8d8' : '#3a5a80',
-    textMuted:      dark ? '#2e5070' : '#7a9ab8',
-    textTab:        dark ? '#7aa8d8' : '#3a5a80',
-    // Accents
-    blue:           dark ? '#2e7dd1' : '#1a5fa8',
-    blueLight:      dark ? 'rgba(46,125,209,.22)' : '#dbeafe',
-    blueText:       dark ? '#c8dff5' : '#1e3a5f',
-    red:            dark ? '#e05555' : '#b91c1c',
-    redLight:       dark ? 'rgba(224,85,85,.15)'  : '#fee2e2',
-    redText:        dark ? '#e05555' : '#7f1d1d',
-    green:          dark ? '#3cb87a' : '#15803d',
-    greenLight:     dark ? 'rgba(60,184,122,.15)' : '#dcfce7',
-    greenText:      dark ? '#c8e8c8' : '#14532d',
-    amber:          dark ? '#f0a832' : '#b45309',
-    amberLight:     dark ? 'rgba(240,168,50,.15)' : '#fef3c7',
-    amberText:      dark ? '#f0c060' : '#78350f',
-    gray:           dark ? '#4d82b0' : '#4a6a8a',
-    grayLight:      dark ? 'rgba(77,130,176,.13)' : '#f0f4f8',
-    // Floating bar
-    floatBg:        dark ? 'rgba(13,27,46,.93)' : 'rgba(238,242,247,.96)',
-    // Modal
-    modalBg:        dark ? '#122038' : '#ffffff',
-    modalOverlay:   'rgba(0,0,0,.65)',
-    // Tab
-    tabActiveBorder: dark ? '#2e7dd1' : '#1a5fa8',
-    tabActiveColor:  dark ? '#2e7dd1' : '#1a5fa8',
-    // Section header
-    sectionBg:      dark ? '#122038' : '#e4eaf4',
-    // Today column
-    todayBg:        dark ? '#1a3a6a' : '#dbeafe',
-    todayText:      dark ? '#ffffff'  : '#1e40af',
-    todayBorder:    dark ? '#e05555' : '#b91c1c',
+    pageBg:         '#f0f2f7',
+    surfacePrimary: '#ffffff',
+    surfaceSecond:  '#e8eaf2',
+    surfaceHover:   '#dde0ec',
+    surfaceToday:   '#dbeafe',
+    border:         '#d8dce8',
+    borderLight:    '#e2e5f0',
+    textPrimary:    '#1f2937',
+    textSecondary:  '#6b7280',
+    textMuted:      '#9ca3af',
+    textTab:        '#6b7280',
+    blue:           '#2563eb',
+    blueLight:      '#dbeafe',
+    blueText:       '#1e3a5f',
+    red:            '#dc2626',
+    redLight:       '#fee2e2',
+    redText:        '#7f1d1d',
+    green:          '#059669',
+    greenLight:     '#d1fae5',
+    greenText:      '#064e3b',
+    amber:          '#b45309',
+    amberLight:     '#fef3c7',
+    amberText:      '#78350f',
+    gray:           '#6b7280',
+    grayLight:      '#f3f4f6',
+    floatBg:        'rgba(240,242,247,.95)',
+    modalBg:        '#ffffff',
+    modalOverlay:   'rgba(0,0,0,.5)',
+    tabActiveBorder:'#2563eb',
+    tabActiveColor: '#2563eb',
+    sectionBg:      '#eef0f8',
+    todayBg:        '#dbeafe',
+    todayText:      '#1e40af',
+    todayBorder:    '#dc2626',
   }
 }
 
@@ -105,32 +169,47 @@ function Modal({ open, onClose, children, T }) {
   )
 }
 
-// ── Theme toggle — pill switch ─────────────────────────────────────────
+// ── Theme toggle — 3-way cycle button ─────────────────────────────────
+const THEME_META = {
+  steel: { icon: '⬡', label: 'Steel',  bg: '#0d1b2e', accent: '#2e7dd1', text: '#7aa8d8', border: '#1e3a5a' },
+  dark:  { icon: '◉', label: 'Dark',   bg: '#0f1117', accent: '#4f8ef7', text: '#9aa3c2', border: '#3a4268' },
+  light: { icon: '◎', label: 'Light',  bg: '#f0f2f7', accent: '#2563eb', text: '#6b7280', border: '#d8dce8' },
+}
+const THEME_ORDER = ['steel','dark','light']
+
 function ThemeToggle({ T, onToggle }) {
-  const dark = T.mode === 'dark'
+  const current = THEME_META[T.mode]
+  const nextMode = THEME_ORDER[(THEME_ORDER.indexOf(T.mode)+1) % 3]
+  const next = THEME_META[nextMode]
   return (
-    <button onClick={onToggle} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+    <button onClick={onToggle}
+      title={`Switch to ${next.label} mode`}
       style={{
-        display:'flex', alignItems:'center', gap:0,
-        background: dark ? '#0d1b2e' : '#e4eaf4',
-        border: `1px solid ${dark ? '#1e3a5a' : '#b8c8e0'}`,
-        borderRadius:20, padding:'3px 4px', cursor:'pointer',
-        transition:'all .2s', position:'relative', width:64, height:28,
+        display:'flex', alignItems:'center', gap:7,
+        background: current.bg,
+        border: `1px solid ${current.border}`,
+        borderRadius:8, padding:'5px 12px 5px 8px',
+        cursor:'pointer', transition:'all .2s',
+        fontFamily:'DM Mono,monospace',
         flexShrink:0,
       }}>
-      {/* Track label left — moon */}
-      <span style={{position:'absolute',left:8,fontSize:12,opacity:dark?1:0.3,transition:'opacity .2s',lineHeight:1}}>🌙</span>
-      {/* Track label right — sun */}
-      <span style={{position:'absolute',right:7,fontSize:12,opacity:dark?0.3:1,transition:'opacity .2s',lineHeight:1}}>☀️</span>
-      {/* Thumb */}
-      <span style={{
-        width:22, height:22, borderRadius:'50%',
-        background: dark ? '#2e7dd1' : '#1a5fa8',
-        position:'absolute',
-        left: dark ? 4 : 38,
-        transition:'left .2s cubic-bezier(.4,0,.2,1)',
-        boxShadow:'0 2px 6px rgba(0,0,0,.35)',
-      }} />
+      {/* Three dots showing position */}
+      <span style={{display:'flex',gap:4,alignItems:'center'}}>
+        {THEME_ORDER.map(m=>(
+          <span key={m} style={{
+            width: m===T.mode ? 8 : 5,
+            height: m===T.mode ? 8 : 5,
+            borderRadius:'50%',
+            background: m===T.mode ? current.accent : current.border,
+            transition:'all .2s',
+            display:'inline-block',
+          }} />
+        ))}
+      </span>
+      {/* Current label */}
+      <span style={{fontSize:11,color:current.text,letterSpacing:.3,lineHeight:1}}>
+        {current.label}
+      </span>
     </button>
   )
 }
@@ -198,10 +277,11 @@ async function restoreSnapshot(snap, setters) {
 // MAIN APP
 // ════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [themeMode, setThemeMode] = useState(()=>localStorage.getItem('bsfds-theme')||'dark')
+  const [themeMode, setThemeMode] = useState(()=>localStorage.getItem('bsfds-theme')||'steel')
   const T = makeTheme(themeMode)
   function toggleTheme() {
-    const next = themeMode==='dark'?'light':'dark'
+    const cycle = { steel:'dark', dark:'light', light:'steel' }
+    const next = cycle[themeMode]
     setThemeMode(next); localStorage.setItem('bsfds-theme',next)
   }
 
@@ -920,7 +1000,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
                 )
               }),
               <th key={`ss${wi}`} data-weekend="1"
-                style={{...thStyle,background:T.mode==='dark'?'#0d1018':T.surfaceSecond,opacity:.5,
+                style={{...thStyle,background:T.mode!=='light'?'#0d1018':T.surfaceSecond,opacity:.5,
                   fontSize:8,color:T.textMuted,writingMode:'vertical-rl'}}>S/S</th>
             ])}
           </tr></thead>
@@ -1055,10 +1135,10 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
       if(entry.wtype==='leave'){bg=T.redLight;bc=T.red;textColor=T.redText}
       else if(entry.wtype==='ph'){bg=T.amberLight;bc=T.amber;textColor=T.amberText}
       else if(entry.wtype==='admin'){bg=T.grayLight;bc=T.gray;textColor=T.textSecondary}
-      else if(projColor){const {r,g,b}=hexToRgb(projColor);bg=`rgba(${r},${g},${b},${T.mode==='dark'?.18:.15})`;bc=projColor;textColor=T.mode==='dark'?'#ffffff':projColor}
+      else if(projColor){const {r,g,b}=hexToRgb(projColor);bg=`rgba(${r},${g},${b},${T.mode!=='light'?.18:.15})`;bc=projColor;textColor=T.mode!=='light'?'#ffffff':projColor}
 
-      const arrowBtn={background:T.mode==='dark'?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',
-        border:'none',cursor:'pointer',color:T.mode==='dark'?'rgba(255,255,255,.4)':'rgba(0,0,0,.35)',
+      const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',
+        border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.4)':'rgba(0,0,0,.35)',
         fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
 
       cells.push(
@@ -1120,7 +1200,7 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
       </td>
       {weekSegments.flatMap((seg,wi)=>[
         ...renderWeek(seg.work),
-        <td key={`ss${wi}`} style={{background:T.mode==='dark'?'#0a0d14':T.surfaceSecond,border:`1px solid ${T.borderLight}`,width:26}} />
+        <td key={`ss${wi}`} style={{background:T.mode!=='light'?'#0a0d14':T.surfaceSecond,border:`1px solid ${T.borderLight}`,width:26}} />
       ])}
     </tr>
   )
