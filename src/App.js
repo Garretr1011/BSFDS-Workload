@@ -8,7 +8,61 @@ import {
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
 
-// ── Country flag images (flagcdn.com renders on all platforms incl. Windows) ──
+// ── Theme tokens ──────────────────────────────────────────────────────
+function makeTheme(mode) {
+  const dark = mode === 'dark'
+  return {
+    mode,
+    // Page
+    pageBg:        dark ? '#0f1117' : '#f0f2f7',
+    // Surfaces
+    surfacePrimary:dark ? '#181c27' : '#ffffff',
+    surfaceSecond: dark ? '#1e2335' : '#e8eaf2',
+    surfaceHover:  dark ? '#232840' : '#dde0ec',
+    surfaceToday:  dark ? '#181d2a' : '#dbeafe',
+    // Borders
+    border:        dark ? '#3a4268' : '#d8dce8',
+    borderLight:   dark ? '#2a3050' : '#e2e5f0',
+    // Text
+    textPrimary:   dark ? '#ffffff' : '#1f2937',
+    textSecondary: dark ? '#c5cde8' : '#6b7280',
+    textMuted:     dark ? '#4a5280' : '#9ca3af',
+    textTab:       dark ? '#9aa3c2' : '#6b7280',
+    // Accents (same in both modes)
+    blue:    '#4f8ef7',
+    blueLight:dark?'rgba(79,142,247,.22)':'#dbeafe',
+    blueText:  dark ? '#ffffff' : '#1e3a5f',
+    red:     dark ? '#f87171' : '#dc2626',
+    redLight:  dark ? 'rgba(248,113,113,.18)' : '#fee2e2',
+    redText:   dark ? '#f87171' : '#7f1d1d',
+    green:   dark ? '#4ff7a2' : '#059669',
+    greenLight:dark?'rgba(79,247,162,.15)':'#d1fae5',
+    greenText: dark ? '#ffffff' : '#064e3b',
+    amber:   '#f7a24f',
+    amberLight:dark?'rgba(247,162,79,.13)':'#fef3c7',
+    amberText: dark ? '#f7a24f' : '#78350f',
+    gray:    dark ? '#5a6380' : '#6b7280',
+    grayLight: dark ? 'rgba(90,99,128,.13)' : '#f3f4f6',
+    // Floating bar
+    floatBg:   dark ? 'rgba(15,17,23,.92)' : 'rgba(240,242,247,.95)',
+    // Modal
+    modalBg:   dark ? '#181c27' : '#ffffff',
+    modalOverlay: 'rgba(0,0,0,.6)',
+    // Tab active
+    tabActiveBorder: '#4f8ef7',
+    tabActiveColor:  '#4f8ef7',
+    // Section header
+    sectionBg: dark ? '#181c27' : '#eef0f8',
+    // Today column
+    todayBg:   dark ? '#1a2540' : '#dbeafe',
+    todayText: dark ? '#ffffff' : '#1e40af',
+    todayBorder: dark ? '#f87171' : '#dc2626',
+    // Stat card numbers
+    numFont: 'system-ui,-apple-system,sans-serif',
+  }
+}
+
+// ── Country flags ──────────────────────────────────────────────────────
 const FLAG_CODES = { Brisbane:'au', Chennai:'in', Bangkok:'th' }
 function OfficeFlag({ office, size=16 }) {
   const code = FLAG_CODES[office]
@@ -17,15 +71,15 @@ function OfficeFlag({ office, size=16 }) {
     style={{width:size,height:'auto',borderRadius:2,verticalAlign:'middle',flexShrink:0}} />
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────────────────
 function Toast({ msg, onDone }) {
   useEffect(()=>{ const t=setTimeout(onDone,3000); return ()=>clearTimeout(t) },[onDone])
   return <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',
-    background:'rgba(247,92,92,.95)',color:'#fff',padding:'10px 20px',borderRadius:6,
+    background:'rgba(220,38,38,.95)',color:'#fff',padding:'10px 20px',borderRadius:6,
     fontSize:13,zIndex:9999,fontFamily:'DM Mono,monospace',pointerEvents:'none'}}>{msg}</div>
 }
 
-// ── Drag Ghost ────────────────────────────────────────────────────────
+// ── Drag Ghost ─────────────────────────────────────────────────────────
 function DragGhost({ x, y, text, isCopy }) {
   if (!text) return null
   return <div style={{position:'fixed',left:x+14,top:y-16,pointerEvents:'none',zIndex:999,
@@ -35,37 +89,54 @@ function DragGhost({ x, y, text, isCopy }) {
     color:isCopy?'#4ff7a2':'#4f8ef7',whiteSpace:'nowrap'}}>{text}</div>
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────
-function Modal({ open, onClose, children, width }) {
+// ── Modal ──────────────────────────────────────────────────────────────
+function Modal({ open, onClose, children, T }) {
   if (!open) return null
   return (
     <div onMouseDown={e=>e.target===e.currentTarget&&onClose()}
-      style={{position:'fixed',inset:0,background:'rgba(0,0,0,.78)',zIndex:200,
+      style={{position:'fixed',inset:0,background:T.modalOverlay,zIndex:200,
         display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div onMouseDown={e=>e.stopPropagation()}
-        style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:10,
-          width:width||480,maxWidth:'95vw',padding:24,
-          boxShadow:'0 24px 70px rgba(0,0,0,.6)',
-          maxHeight:'90vh',overflowY:'auto',fontFamily:'DM Mono,monospace'}}>
+        style={{background:T.modalBg,border:`1px solid ${T.border}`,borderRadius:10,
+          width:480,maxWidth:'95vw',padding:24,
+          boxShadow:'0 24px 70px rgba(0,0,0,.4)',
+          maxHeight:'90vh',overflowY:'auto',fontFamily:'DM Mono,monospace',color:T.textPrimary}}>
         {children}
       </div>
     </div>
   )
 }
 
-const I = {
-  base:{width:'100%',background:'#1e2335',border:'1px solid #2a3050',color:'#e2e8ff',
-    padding:'8px 10px',borderRadius:4,fontSize:12,fontFamily:'DM Mono,monospace',boxSizing:'border-box'},
-  label:{display:'block',fontSize:11,color:'#9aa3c2',marginBottom:4,marginTop:13},
-  row:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12},
+// ── Theme toggle button ────────────────────────────────────────────────
+function ThemeToggle({ T, onToggle }) {
+  const dark = T.mode === 'dark'
+  return (
+    <button onClick={onToggle} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,
+        color:T.textSecondary,padding:'6px 12px',borderRadius:4,cursor:'pointer',
+        fontSize:12,fontFamily:'DM Mono,monospace',display:'flex',alignItems:'center',gap:6}}>
+      {dark ? '☀ Light' : '☾ Dark'}
+    </button>
+  )
 }
-const btnBase={background:'#1e2335',border:'1px solid #2a3050',color:'#9aa3c2',
-  padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontFamily:'DM Mono,monospace'}
-const modalH3={fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:'#e2e8ff'}
 
-// ─────────────────────────────────────────────────────────────────────
-// Full undo/redo snapshot — covers ALL tables
-// ─────────────────────────────────────────────────────────────────────
+// ── Input styles (theme-aware) ─────────────────────────────────────────
+function makeI(T) {
+  return {
+    base:{width:'100%',background:T.surfaceSecond,border:`1px solid ${T.border}`,
+      color:T.textPrimary,padding:'8px 10px',borderRadius:4,fontSize:12,
+      fontFamily:'DM Mono,monospace',boxSizing:'border-box'},
+    label:{display:'block',fontSize:11,color:T.textSecondary,marginBottom:4,marginTop:13},
+    row:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12},
+  }
+}
+
+function makeBtnBase(T) {
+  return {background:T.surfacePrimary,border:`1px solid ${T.border}`,color:T.textSecondary,
+    padding:'6px 14px',borderRadius:4,cursor:'pointer',fontSize:12,fontFamily:'DM Mono,monospace'}
+}
+
+// ── Full DB snapshot for undo/redo ─────────────────────────────────────
 async function takeSnapshot() {
   const [ta,ul,ph,pr,at,tm] = await Promise.all([
     supabase.from('task_assignments').select('*'),
@@ -75,46 +146,26 @@ async function takeSnapshot() {
     supabase.from('admin_tasks').select('*'),
     supabase.from('team_members').select('*'),
   ])
-  return {
-    assignments: ta.data||[],
-    leave: ul.data||[],
-    ph: ph.data||[],
-    projects: pr.data||[],
-    adminTasks: at.data||[],
-    teamMembers: tm.data||[],
-  }
+  return { assignments:ta.data||[], leave:ul.data||[], ph:ph.data||[],
+    projects:pr.data||[], adminTasks:at.data||[], teamMembers:tm.data||[] }
 }
 
 async function restoreSnapshot(snap, setters) {
   const { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
     setProjects,setAdminTasks,setTeamMembers } = setters
-
-  // Restore task_assignments
   await supabase.from('task_assignments').delete().neq('id','00000000-0000-0000-0000-000000000000')
-  if (snap.assignments.length>0) await supabase.from('task_assignments').insert(
+  if(snap.assignments.length>0) await supabase.from('task_assignments').insert(
     snap.assignments.map(a=>({...a,updated_at:new Date().toISOString()})))
-
-  // Restore upcoming_leave
   await supabase.from('upcoming_leave').delete().neq('id','_none_')
-  if (snap.leave.length>0) await supabase.from('upcoming_leave').insert(snap.leave)
-
-  // Restore public_holidays
+  if(snap.leave.length>0) await supabase.from('upcoming_leave').insert(snap.leave)
   await supabase.from('public_holidays').delete().neq('id','_none_')
-  if (snap.ph.length>0) await supabase.from('public_holidays').insert(snap.ph)
-
-  // Restore projects
+  if(snap.ph.length>0) await supabase.from('public_holidays').insert(snap.ph)
   await supabase.from('projects').delete().neq('id','_none_')
-  if (snap.projects.length>0) await supabase.from('projects').insert(snap.projects)
-
-  // Restore admin_tasks
+  if(snap.projects.length>0) await supabase.from('projects').insert(snap.projects)
   await supabase.from('admin_tasks').delete().neq('id','_none_')
-  if (snap.adminTasks.length>0) await supabase.from('admin_tasks').insert(snap.adminTasks)
-
-  // Restore team_members
+  if(snap.adminTasks.length>0) await supabase.from('admin_tasks').insert(snap.adminTasks)
   await supabase.from('team_members').delete().neq('id','00000000-0000-0000-0000-000000000000')
-  if (snap.teamMembers.length>0) await supabase.from('team_members').insert(snap.teamMembers)
-
-  // Refresh local state
+  if(snap.teamMembers.length>0) await supabase.from('team_members').insert(snap.teamMembers)
   const [ta,ul,ph,pr,at,tm] = await Promise.all([
     supabase.from('task_assignments').select('*'),
     supabase.from('upcoming_leave').select('*'),
@@ -123,18 +174,22 @@ async function restoreSnapshot(snap, setters) {
     supabase.from('admin_tasks').select('*').order('name'),
     supabase.from('team_members').select('*').order('office').order('sort_order'),
   ])
-  setAssignments(ta.data||[])
-  setUpcomingLeaveRows(ul.data||[])
-  setPublicHolidayRows(ph.data||[])
-  setProjects(pr.data||[])
-  setAdminTasks(at.data||[])
-  setTeamMembers(tm.data||[])
+  setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[])
+  setPublicHolidayRows(ph.data||[]); setProjects(pr.data||[])
+  setAdminTasks(at.data||[]); setTeamMembers(tm.data||[])
 }
 
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // MAIN APP
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 export default function App() {
+  const [themeMode, setThemeMode] = useState(()=>localStorage.getItem('bsfds-theme')||'dark')
+  const T = makeTheme(themeMode)
+  function toggleTheme() {
+    const next = themeMode==='dark'?'light':'dark'
+    setThemeMode(next); localStorage.setItem('bsfds-theme',next)
+  }
+
   const [tab, setTab] = useState('workload')
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
@@ -153,10 +208,10 @@ export default function App() {
   const [weekStart, setWeekStart] = useState(()=>getMondayOf(new Date()))
   const [officeFilter, setOfficeFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
-  const [leaveFilter, setLeaveFilter] = useState(false)       // filter to on-leave members only
-  const [unassignedFilter, setUnassignedFilter] = useState(false) // filter to unassigned members only
+  const [leaveFilter, setLeaveFilter] = useState(false)
+  const [unassignedFilter, setUnassignedFilter] = useState(false)
   const [search, setSearch] = useState('')
-  const [gridWeeks, setGridWeeks] = useState(2)   // grid view duration: 2, 3 or 4
+  const [gridWeeks, setGridWeeks] = useState(2)
   const [statWeeks, setStatWeeks] = useState(2)
   const [leaveStatWeeks, setLeaveStatWeeks] = useState(1)
 
@@ -168,26 +223,22 @@ export default function App() {
   const [phModal, setPhModal] = useState(null)
 
   const [dragGhost, setDragGhost] = useState(null)
-  const dragState = useRef(null)      // resize drag
-  const copyDragState = useRef(null)  // copy drag
-
-  // Undo / Redo stacks — each entry is a full DB snapshot
+  const dragState = useRef(null)
+  const copyDragState = useRef(null)
   const undoStack = useRef([])
   const redoStack = useRef([])
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
   const showToast = useCallback(msg=>setToast(msg),[])
-
-  const setters = { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
-    setProjects,setAdminTasks,setTeamMembers }
+  const setters = {setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
+    setProjects,setAdminTasks,setTeamMembers}
 
   const reloadAssignments = useCallback(async()=>{
     const r=await supabase.from('task_assignments').select('*')
     setAssignments(r.data||[])
   },[])
 
-  // ── Load all data ──
   useEffect(()=>{
     async function loadAll() {
       setLoading(true)
@@ -199,12 +250,8 @@ export default function App() {
         supabase.from('upcoming_leave').select('*'),
         supabase.from('public_holidays').select('*').order('iso_date'),
       ])
-      setTeamMembers(tm.data||[])
-      setProjects(pr.data||[])
-      setAdminTasks(at.data||[])
-      setAssignments(ta.data||[])
-      setUpcomingLeaveRows(ul.data||[])
-      setPublicHolidayRows(ph.data||[])
+      setTeamMembers(tm.data||[]); setProjects(pr.data||[]); setAdminTasks(at.data||[])
+      setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[]); setPublicHolidayRows(ph.data||[])
       setLoading(false)
     }
     loadAll()
@@ -214,7 +261,6 @@ export default function App() {
   useEffect(()=>{ setUpcomingLeave(buildLeaveMap(upcomingLeaveRows)) },[upcomingLeaveRows])
   useEffect(()=>{ setUpcomingPH(buildPHMap(publicHolidayRows)) },[publicHolidayRows])
 
-  // ── Realtime subscriptions ──
   useEffect(()=>{
     const channels=[
       supabase.channel('rt-team').on('postgres_changes',{event:'*',schema:'public',table:'team_members'},
@@ -234,7 +280,6 @@ export default function App() {
   },[reloadAssignments])
 
   const days = getWeekDays(weekStart, gridWeeks)
-  // Build week segments: each week = [Mon..Fri] + [Sat,Sun]
   const weekSegments = Array.from({length:gridWeeks},(_,w)=>({
     work: days.slice(w*7, w*7+5),
     weekend: days.slice(w*7+5, w*7+7),
@@ -247,80 +292,51 @@ export default function App() {
     getActiveTask(name,ds,tasks,upcomingLeave,upcomingPH,teamMembers),
     [tasks,upcomingLeave,upcomingPH,teamMembers])
 
-  // ── Stats — filtered by office (not by project) ──
-  const statMembers = officeFilter === 'all'
-    ? teamMembers
-    : teamMembers.filter(m => m.office === officeFilter)
-
+  // Stats filtered by office
+  const statMembers = officeFilter==='all' ? teamMembers : teamMembers.filter(m=>m.office===officeFilter)
   const statWorkdays=[]
   for(let i=0;i<statWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) statWorkdays.push(d) }
   let unassigned=0,assigned=0,totalPossible=0
-  const unassignedNames = new Set()
+  const unassignedNames=new Set()
   statMembers.forEach(({name})=>{
     let hasUnassigned=false
-    statWorkdays.forEach(d=>{
-      totalPossible++
-      if(getActive(name,fmtDate(d))) assigned++
-      else { unassigned++; hasUnassigned=true }
-    })
+    statWorkdays.forEach(d=>{ totalPossible++; if(getActive(name,fmtDate(d))) assigned++; else{unassigned++;hasUnassigned=true} })
     if(hasUnassigned) unassignedNames.add(name)
   })
   const utilPct=totalPossible>0?Math.round(assigned/totalPossible*100):0
-
-  // Leave stat (separate week toggle, also filtered by office)
   const leaveStatWorkdays=[]
   for(let i=0;i<leaveStatWeeks*7;i++){ const d=addDays(weekStart,i); if(!isWeekend(d)) leaveStatWorkdays.push(d) }
   const onLeaveSet=new Set()
   statMembers.forEach(({name})=>{
     leaveStatWorkdays.forEach(d=>{ if(getActive(name,fmtDate(d))?.entry?.wtype==='leave') onLeaveSet.add(name) })
   })
-  const onLeave=onLeaveSet.size
-  const onLeaveHrs=onLeave*leaveStatWeeks*5*8
-
-  // Projects active in window
+  const onLeave=onLeaveSet.size, onLeaveHrs=onLeave*leaveStatWeeks*5*8
   const activeProjectsInWindow=projects.filter(p=>p.status==='active'&&
     teamMembers.some(m=>allWorkdays.some(d=>getActive(m.name,fmtDate(d))?.entry?.pid===p.id)))
 
-  // ── Undo/Redo helpers ──
+  // Undo / Redo
   async function pushUndo() {
-    const snap = await takeSnapshot()
-    undoStack.current.push(snap)
-    redoStack.current = []          // new action clears redo
-    setCanUndo(true)
-    setCanRedo(false)
+    const snap=await takeSnapshot(); undoStack.current.push(snap)
+    redoStack.current=[]; setCanUndo(true); setCanRedo(false)
   }
-
   async function undo() {
-    if (!undoStack.current.length) return
-    const currentSnap = await takeSnapshot()
-    redoStack.current.push(currentSnap)
-    const prev = undoStack.current.pop()
-    setCanUndo(undoStack.current.length>0)
-    setCanRedo(true)
-    await restoreSnapshot(prev, setters)
-    showToast('Undone')
+    if(!undoStack.current.length) return
+    const cur=await takeSnapshot(); redoStack.current.push(cur)
+    const prev=undoStack.current.pop()
+    setCanUndo(undoStack.current.length>0); setCanRedo(true)
+    await restoreSnapshot(prev,setters); showToast('Undone')
   }
-
   async function redo() {
-    if (!redoStack.current.length) return
-    const currentSnap = await takeSnapshot()
-    undoStack.current.push(currentSnap)
-    const next = redoStack.current.pop()
-    setCanUndo(true)
-    setCanRedo(redoStack.current.length>0)
-    await restoreSnapshot(next, setters)
-    showToast('Redone')
+    if(!redoStack.current.length) return
+    const cur=await takeSnapshot(); undoStack.current.push(cur)
+    const next=redoStack.current.pop()
+    setCanUndo(true); setCanRedo(redoStack.current.length>0)
+    await restoreSnapshot(next,setters); showToast('Redone')
   }
+  async function withUndo(fn) { await pushUndo(); await fn() }
 
-  // ── Wrapper: push undo before any DB mutation ──
-  async function withUndo(fn) {
-    await pushUndo()
-    await fn()
-  }
-
-  // ── Save / Clear task ──
   async function saveTask(name,dateStr,pid,taskLabel,wtype,endDate,notes,skipUndo=false) {
-    if (!skipUndo) await pushUndo()
+    if(!skipUndo) await pushUndo()
     const existing=assignments.find(a=>a.member_name===name&&a.start_date===dateStr)
     const row={member_name:name,start_date:dateStr,end_date:endDate||dateStr,
       task:taskLabel,pid:pid||null,wtype,notes:notes||null,updated_at:new Date().toISOString()}
@@ -335,137 +351,75 @@ export default function App() {
     if(existing){ await supabase.from('task_assignments').delete().eq('id',existing.id); await reloadAssignments() }
   }
 
-  // ── Arrow date adjustment — shrinks adjacent task, or deletes if 1-day ──
-  async function adjustTaskDate(name, startDs, which, delta) {
-    const entry = tasks[name]?.[startDs]?.[0]; if (!entry) return
+  async function adjustTaskDate(name,startDs,which,delta) {
+    const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
     await pushUndo()
-    let newStart = startDs, newEnd = entry.end_date
-
-    // Helper: find the task record from assignments that occupies a given date for this person
-    // (ignores the expanding task itself, ignores virtual PH/leave)
+    let newStart=startDs,newEnd=entry.end_date
     function findOccupant(dateStr) {
-      // Exact start on that date
-      let adj = assignments.find(a =>
-        a.member_name === name && a.start_date === dateStr && a.start_date !== startDs
-      )
-      if (adj) return adj
-      // Spanning task that covers dateStr
-      adj = assignments.find(a =>
-        a.member_name === name &&
-        a.start_date < dateStr &&
-        a.end_date >= dateStr &&
-        a.start_date !== startDs
-      )
-      return adj || null
+      let adj=assignments.find(a=>a.member_name===name&&a.start_date===dateStr&&a.start_date!==startDs)
+      if(adj) return adj
+      return assignments.find(a=>a.member_name===name&&a.start_date<dateStr&&a.end_date>=dateStr&&a.start_date!==startDs)||null
     }
-
-    if (which === 'start') {
-      let d = parseLocalDate(startDs)
-      do { d = addDays(d, delta) } while (isWeekend(d))
-      newStart = fmtDate(d)
-      if (newStart > newEnd) newEnd = newStart
-
-      if (delta < 0) {
-        // Extending start backwards — handle whatever occupies newStart
-        const adj = findOccupant(newStart)
-        if (adj) {
-          const adjDur = Math.round(
-            (parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000
-          )
-          if (adjDur === 0) {
-            await supabase.from('task_assignments').delete().eq('id', adj.id)
-          } else {
-            // Shrink adj end to day before newStart
-            let newAdjEnd = addDays(parseLocalDate(newStart), -1)
-            while (isWeekend(newAdjEnd)) newAdjEnd = addDays(newAdjEnd, -1)
-            const newAdjEndDs = fmtDate(newAdjEnd)
-            if (newAdjEndDs < adj.start_date) {
-              await supabase.from('task_assignments').delete().eq('id', adj.id)
-            } else {
-              await supabase.from('task_assignments').update({
-                end_date: newAdjEndDs, updated_at: new Date().toISOString()
-              }).eq('id', adj.id)
-            }
+    if(which==='start') {
+      let d=parseLocalDate(startDs); do{d=addDays(d,delta)}while(isWeekend(d)); newStart=fmtDate(d)
+      if(newStart>newEnd) newEnd=newStart
+      if(delta<0) {
+        const adj=findOccupant(newStart)
+        if(adj) {
+          const adjDur=Math.round((parseLocalDate(adj.end_date)-parseLocalDate(adj.start_date))/86400000)
+          if(adjDur===0) { await supabase.from('task_assignments').delete().eq('id',adj.id) }
+          else {
+            let e=addDays(parseLocalDate(newStart),-1); while(isWeekend(e)) e=addDays(e,-1)
+            const eds=fmtDate(e)
+            if(eds<adj.start_date) await supabase.from('task_assignments').delete().eq('id',adj.id)
+            else await supabase.from('task_assignments').update({end_date:eds,updated_at:new Date().toISOString()}).eq('id',adj.id)
           }
         }
       }
-
     } else {
-      let d = parseLocalDate(entry.end_date)
-      do { d = addDays(d, delta) } while (isWeekend(d))
-      newEnd = fmtDate(d)
-      if (newEnd < newStart) newStart = newEnd
-
-      if (delta > 0) {
-        // Extending end forward — handle whatever occupies newEnd
-        const adj = findOccupant(newEnd)
-        if (adj) {
-          const adjDur = Math.round(
-            (parseLocalDate(adj.end_date) - parseLocalDate(adj.start_date)) / 86400000
-          )
-          if (adjDur === 0) {
-            // 1-day task → delete entirely
-            await supabase.from('task_assignments').delete().eq('id', adj.id)
-          } else {
-            // Multi-day task → shrink: move start_date forward 1 workday
-            let newAdjStart = addDays(parseLocalDate(newEnd), 1)
-            while (isWeekend(newAdjStart)) newAdjStart = addDays(newAdjStart, 1)
-            const newAdjStartDs = fmtDate(newAdjStart)
-            if (newAdjStartDs > adj.end_date) {
-              // Would collapse to nothing → delete
-              await supabase.from('task_assignments').delete().eq('id', adj.id)
-            } else {
-              await supabase.from('task_assignments').update({
-                start_date: newAdjStartDs, updated_at: new Date().toISOString()
-              }).eq('id', adj.id)
-            }
+      let d=parseLocalDate(entry.end_date); do{d=addDays(d,delta)}while(isWeekend(d)); newEnd=fmtDate(d)
+      if(newEnd<newStart) newStart=newEnd
+      if(delta>0) {
+        const adj=findOccupant(newEnd)
+        if(adj) {
+          const adjDur=Math.round((parseLocalDate(adj.end_date)-parseLocalDate(adj.start_date))/86400000)
+          if(adjDur===0) { await supabase.from('task_assignments').delete().eq('id',adj.id) }
+          else {
+            let s=addDays(parseLocalDate(newEnd),1); while(isWeekend(s)) s=addDays(s,1)
+            const sds=fmtDate(s)
+            if(sds>adj.end_date) await supabase.from('task_assignments').delete().eq('id',adj.id)
+            else await supabase.from('task_assignments').update({start_date:sds,updated_at:new Date().toISOString()}).eq('id',adj.id)
           }
         }
       }
     }
-
-    // Delete old record if start date changed (start arrow moved forward)
-    if (newStart !== startDs)
-      await supabase.from('task_assignments').delete()
-        .eq('member_name', name).eq('start_date', startDs)
-
-    await saveTask(name, newStart, entry.pid, entry.task, entry.wtype, newEnd, entry.notes, true)
+    if(newStart!==startDs)
+      await supabase.from('task_assignments').delete().eq('member_name',name).eq('start_date',startDs)
+    await saveTask(name,newStart,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
   }
 
-  // ── Drag resize ──
-  function startResize(e, name, startDs, handle) {
+  function startResize(e,name,startDs,handle) {
     e.preventDefault(); e.stopPropagation()
     const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
     dragState.current={name,startDs,entry,handle,currentStart:startDs,currentEnd:entry.end_date}
     setDragGhost({x:e.clientX,y:e.clientY,text:entry.task,isCopy:false})
   }
-
-  // ── Drag copy (triggered by dragging a task cell directly) ──
-  function startCopy(e, name, startDs) {
+  function startCopy(e,name,startDs) {
     e.preventDefault(); e.stopPropagation()
     const active=getActive(name,startDs)
     if(!active||active.isVirtual) return
     copyDragState.current={name,startDs,entry:active.entry}
-    setDragGhost({x:e.clientX,y:e.clientY,text:`⊕ ${active.entry.task}`,isCopy:true})
+    setDragGhost({x:e.clientX,y:e.clientY,text:`+ ${active.entry.task}`,isCopy:true})
   }
-
   function getDateAtX(clientX) {
-    // Use data-date attributes set on each workday <th> — reliable across both weeks
-    const ths = document.querySelectorAll('#grid-thead th[data-date]')
-    let best = null, bestDist = Infinity
-    ths.forEach(th => {
-      const rect = th.getBoundingClientRect()
-      const mid = (rect.left + rect.right) / 2
-      const dist = Math.abs(clientX - mid)
-      // if cursor is within this column
-      if (clientX >= rect.left && clientX <= rect.right) {
-        best = th.dataset.date; bestDist = 0
-      } else if (dist < bestDist) {
-        // snap to nearest column edge if outside grid
-        bestDist = dist; best = th.dataset.date
-      }
+    const ths=document.querySelectorAll('#grid-thead th[data-date]')
+    let best=null,bestDist=Infinity
+    ths.forEach(th=>{
+      const rect=th.getBoundingClientRect(),mid=(rect.left+rect.right)/2,dist=Math.abs(clientX-mid)
+      if(clientX>=rect.left&&clientX<=rect.right){best=th.dataset.date;bestDist=0}
+      else if(dist<bestDist){bestDist=dist;best=th.dataset.date}
     })
-    return best ? best : null  // return ISO string directly
+    return best
   }
 
   useEffect(()=>{
@@ -474,17 +428,15 @@ export default function App() {
       setDragGhost(g=>g?{...g,x:e.clientX,y:e.clientY}:null)
       if(dragState.current) {
         const {entry,handle}=dragState.current
-        const targetDs=getDateAtX(e.clientX)
-        if(!targetDs) return
-        const targetDay=parseLocalDate(targetDs)
-        if(isWeekend(targetDay)) return
+        const targetDs=getDateAtX(e.clientX); if(!targetDs) return
+        const targetDay=parseLocalDate(targetDs); if(isWeekend(targetDay)) return
         if(handle==='end'&&targetDs<dragState.current.currentStart) return
         if(handle==='start'&&targetDs>dragState.current.currentEnd) return
         if(handle==='end') dragState.current.currentEnd=targetDs
         else dragState.current.currentStart=targetDs
         const s=parseLocalDate(dragState.current.currentStart),t=parseLocalDate(dragState.current.currentEnd)
         const nd=Math.round((t-s)/86400000)+1
-        const lbl=handle==='end'?`End → ${fmtDisplay(targetDay)}`:`Start → ${fmtDisplay(targetDay)}`
+        const lbl=handle==='end'?`End -> ${fmtDisplay(targetDay)}`:`Start -> ${fmtDisplay(targetDay)}`
         setDragGhost(g=>({...g,text:`${entry.task}  |  ${lbl} (${nd}d)`}))
       }
       if(copyDragState.current) {
@@ -519,66 +471,33 @@ export default function App() {
         const row=el?.closest('[data-member-row]')
         const targetName=row?.dataset?.memberRow
         const targetDs=getDateAtX(e.clientX)
-        // need a valid drop target
         if(targetName&&targetDs&&!isWeekend(parseLocalDate(targetDs))) {
-          // Don't drop on exact same position
           if(targetName===srcName&&targetDs===startDs) return
-
-          // ── Merge check: is the drop cell directly adjacent to an identical task? ──
-          // Look for an existing task for targetName that:
-          //   (a) has the same task label + pid, AND
-          //   (b) its end_date is the day before targetDs  → extend its end_date to newEnd
-          //   OR  its start_date is the day after newEnd   → extend its start_date to targetDs
-          const dur = entry.end_date>startDs
-            ? Math.round((parseLocalDate(entry.end_date)-parseLocalDate(startDs))/86400000) : 0
-          const newEnd = dur>0 ? fmtDate(addDays(parseLocalDate(targetDs),dur)) : targetDs
-
-          function isSameTask(a) {
-            return a.member_name===targetName && a.task===entry.task && (a.pid||'')===(entry.pid||'')
-          }
-          // Day before targetDs (skip weekends)
-          let dayBefore = addDays(parseLocalDate(targetDs),-1)
-          while(isWeekend(dayBefore)) dayBefore=addDays(dayBefore,-1)
-          const dayBeforeDs = fmtDate(dayBefore)
-          // Day after newEnd (skip weekends)
-          let dayAfter = addDays(parseLocalDate(newEnd),1)
-          while(isWeekend(dayAfter)) dayAfter=addDays(dayAfter,1)
-          const dayAfterDs = fmtDate(dayAfter)
-
-          // Check: existing task ends the day before drop → extend its end_date
-          const mergeLeft = assignments.find(a=>isSameTask(a)&&a.end_date===dayBeforeDs)
-          // Check: existing task starts the day after drop's end → extend its start_date
-          const mergeRight = assignments.find(a=>isSameTask(a)&&a.start_date===dayAfterDs)
-
+          const dur=entry.end_date>startDs?Math.round((parseLocalDate(entry.end_date)-parseLocalDate(startDs))/86400000):0
+          const newEnd=dur>0?fmtDate(addDays(parseLocalDate(targetDs),dur)):targetDs
+          function isSameTask(a){return a.member_name===targetName&&a.task===entry.task&&(a.pid||'')===(entry.pid||'')}
+          let dayBefore=addDays(parseLocalDate(targetDs),-1); while(isWeekend(dayBefore)) dayBefore=addDays(dayBefore,-1)
+          const dayBeforeDs=fmtDate(dayBefore)
+          let dayAfter=addDays(parseLocalDate(newEnd),1); while(isWeekend(dayAfter)) dayAfter=addDays(dayAfter,1)
+          const dayAfterDs=fmtDate(dayAfter)
+          const mergeLeft=assignments.find(a=>isSameTask(a)&&a.end_date===dayBeforeDs)
+          const mergeRight=assignments.find(a=>isSameTask(a)&&a.start_date===dayAfterDs)
           await pushUndo()
-
           if(mergeLeft) {
-            // Extend the existing task's end date to cover the dropped range
-            const mergedEnd = newEnd > mergeLeft.end_date ? newEnd : mergeLeft.end_date
-            await supabase.from('task_assignments').update({
-              end_date: mergedEnd, updated_at: new Date().toISOString()
-            }).eq('id', mergeLeft.id)
-            // Also merge right if that exists too
-            if(mergeRight) {
-              const finalEnd = mergeRight.end_date > mergedEnd ? mergeRight.end_date : mergedEnd
-              await supabase.from('task_assignments').update({
-                end_date: finalEnd, updated_at: new Date().toISOString()
-              }).eq('id', mergeLeft.id)
-              await supabase.from('task_assignments').delete().eq('id', mergeRight.id)
+            const mergedEnd=newEnd>mergeLeft.end_date?newEnd:mergeLeft.end_date
+            await supabase.from('task_assignments').update({end_date:mergedEnd,updated_at:new Date().toISOString()}).eq('id',mergeLeft.id)
+            if(mergeRight){
+              const finalEnd=mergeRight.end_date>mergedEnd?mergeRight.end_date:mergedEnd
+              await supabase.from('task_assignments').update({end_date:finalEnd,updated_at:new Date().toISOString()}).eq('id',mergeLeft.id)
+              await supabase.from('task_assignments').delete().eq('id',mergeRight.id)
             }
             showToast('Merged')
           } else if(mergeRight) {
-            // Extend the existing task's start_date back to targetDs
-            await supabase.from('task_assignments').update({
-              start_date: targetDs, updated_at: new Date().toISOString()
-            }).eq('id', mergeRight.id)
+            await supabase.from('task_assignments').update({start_date:targetDs,updated_at:new Date().toISOString()}).eq('id',mergeRight.id)
             showToast('Merged')
           } else {
-            // No adjacent identical task — normal copy/move
             await saveTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
-            showToast(targetName===srcName
-              ? `Moved to ${fmtDisplay(parseLocalDate(targetDs))}`
-              : `Copied to ${targetName}`)
+            showToast(targetName===srcName?`Moved to ${fmtDisplay(parseLocalDate(targetDs))}`:`Copied to ${targetName}`)
           }
           await reloadAssignments()
         }
@@ -589,7 +508,6 @@ export default function App() {
     return()=>{ window.removeEventListener('mousemove',onMouseMove); window.removeEventListener('mouseup',onMouseUp) }
   },[tasks,weekStart,assignments,showToast])
 
-  // ── Row reorder ──
   const [rowDragSrc,setRowDragSrc]=useState(null)
   async function moveRow(memberId,office,dir) {
     const om=teamMembers.filter(m=>m.office===office).sort((a,b)=>a.sort_order-b.sort_order)
@@ -617,11 +535,10 @@ export default function App() {
     )
   }
 
-  // ── Export ──
   function exportSummary() {
     const lines=[`BSFDS Workload Summary (${gridWeeks} weeks)`,
       `Period: ${fmtDisplay(allWorkdays[0])} to ${fmtDisplay(allWorkdays[allWorkdays.length-1])}`,
-      `Generated: ${new Date().toLocaleString('en-AU')}`,'','═'.repeat(70),'']
+      `Generated: ${new Date().toLocaleString('en-AU')}`,'','='.repeat(70),'']
     allOffices.forEach(office=>{
       lines.push(`[ ${office.toUpperCase()} ]`)
       teamMembers.filter(m=>m.office===office).forEach(({name,role})=>{
@@ -637,60 +554,63 @@ export default function App() {
     a.download=`BSFDS_Workload_${fmtDate(allWorkdays[0])}.txt`; a.click()
   }
 
+  const btnBase = makeBtnBase(T)
+
   if(loading) return(
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',
-      background:'#0f1117',color:'#9aa3c2',fontFamily:'DM Mono,monospace',fontSize:14}}>
-      Loading BSFDS Workload Manager…
+      background:T.pageBg,color:T.textSecondary,fontFamily:'DM Mono,monospace',fontSize:14}}>
+      Loading BSFDS Workload Manager...
     </div>
   )
 
   return(
-    <div style={{background:'#0f1117',minHeight:'100vh',color:'#e2e8ff',fontFamily:'DM Mono,monospace'}}>
+    <div style={{background:T.pageBg,minHeight:'100vh',color:T.textPrimary,fontFamily:'DM Mono,monospace'}}>
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)} />}
       {dragGhost&&<DragGhost x={dragGhost.x} y={dragGhost.y} text={dragGhost.text} isCopy={dragGhost.isCopy} />}
 
-      {/* Floating undo/redo bar — always visible at top of viewport */}
+      {/* Floating undo/redo bar */}
       <div style={{position:'fixed',top:0,left:0,right:0,zIndex:50,
         display:'flex',justifyContent:'flex-end',gap:6,padding:'6px 24px',
-        background:'rgba(15,17,23,.92)',backdropFilter:'blur(8px)',
-        borderBottom:'1px solid #2a3050',pointerEvents:'none'}}>
+        background:T.floatBg,backdropFilter:'blur(8px)',
+        borderBottom:`1px solid ${T.borderLight}`,pointerEvents:'none'}}>
         <div style={{display:'flex',gap:6,pointerEvents:'all'}}>
           <button onClick={undo} disabled={!canUndo} title="Undo"
             style={{...btnBase,opacity:canUndo?1:.35,cursor:canUndo?'pointer':'default',
-              fontSize:11,padding:'4px 10px'}}>↩ Undo</button>
+              fontSize:11,padding:'4px 10px'}}>Undo</button>
           <button onClick={redo} disabled={!canRedo} title="Redo"
             style={{...btnBase,opacity:canRedo?1:.35,cursor:canRedo?'pointer':'default',
-              fontSize:11,padding:'4px 10px'}}>↪ Redo</button>
+              fontSize:11,padding:'4px 10px'}}>Redo</button>
         </div>
       </div>
 
-      {/* Push content down below the floating bar */}
       <div style={{paddingTop:36}}>
       <div style={{maxWidth:1600,margin:'0 auto',padding:'16px 20px'}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-          borderBottom:'1px solid #2a3050',paddingBottom:16,marginBottom:0}}>
+          borderBottom:`1px solid ${T.borderLight}`,paddingBottom:16,marginBottom:0}}>
           <div style={{display:'flex',alignItems:'center',gap:18}}>
             <img src="/logo.png" alt="BSFDS" style={{height:60,objectFit:'contain'}}
               onError={e=>e.target.style.display='none'} />
             <div style={{fontFamily:'"Inter",system-ui,sans-serif',fontWeight:800,fontSize:28,
-              letterSpacing:'-0.5px',lineHeight:1.2}}>
+              letterSpacing:'-0.5px',lineHeight:1.2,color:T.textPrimary}}>
               BSFDS Workload Manager
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <button className="btn" onClick={exportSummary}>↓ Export</button>
-            <button className="btn" onClick={()=>window.print()}>Print</button>
+            <ThemeToggle T={T} onToggle={toggleTheme} />
+            <button className="btn" onClick={exportSummary} style={{color:T.textSecondary,background:T.surfacePrimary,border:`1px solid ${T.border}`}}>Export</button>
+            <button className="btn" onClick={()=>window.print()} style={{color:T.textSecondary,background:T.surfacePrimary,border:`1px solid ${T.border}`}}>Print</button>
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{display:'flex',borderBottom:'1px solid #2a3050',marginBottom:20}}>
-          {[['workload','📋 Workload'],['projects','🗂 Projects & Tasks'],['team','👥 Team']].map(([id,label])=>(
+        <div style={{display:'flex',borderBottom:`1px solid ${T.borderLight}`,marginBottom:20}}>
+          {[['workload','Workload'],['projects','Projects & Tasks'],['team','Team']].map(([id,label])=>(
             <div key={id} onClick={()=>setTab(id)}
               style={{padding:'12px 22px',fontSize:12,fontWeight:500,cursor:'pointer',
-                color:tab===id?'#4f8ef7':'#9aa3c2',
-                borderBottom:tab===id?'2px solid #4f8ef7':'2px solid transparent',marginBottom:-1}}>
+                color:tab===id?T.tabActiveColor:T.textTab,
+                borderBottom:tab===id?`2px solid ${T.tabActiveBorder}`:'2px solid transparent',
+                marginBottom:-1}}>
               {label}
             </div>
           ))}
@@ -723,27 +643,27 @@ export default function App() {
             adjustTaskDate={adjustTaskDate}
             rowDragSrc={rowDragSrc} setRowDragSrc={setRowDragSrc}
             moveRow={moveRow} handleRowDrop={handleRowDrop}
-            withUndo={withUndo} showToast={showToast}
+            withUndo={withUndo} showToast={showToast} T={T}
           />
         )}
         {tab==='projects'&&(
           <ProjectsTab projects={projects} setProjects={setProjects}
             adminTasks={adminTasks} setAdminTasks={setAdminTasks}
             setProjectModal={setProjectModal} setAdminTaskModal={setAdminTaskModal}
-            withUndo={withUndo} />
+            withUndo={withUndo} T={T} />
         )}
         {tab==='team'&&(
           <TeamTab teamMembers={teamMembers} setTeamMembers={setTeamMembers}
-            setMemberModal={setMemberModal} withUndo={withUndo} />
+            setMemberModal={setMemberModal} withUndo={withUndo} T={T} />
         )}
+      </div>
       </div>
 
       {/* Modals */}
       {assignModal&&<AssignModal modal={assignModal} onClose={()=>setAssignModal(null)}
-        projects={projects} adminTasks={adminTasks} onSave={saveTask} onClear={clearTask} showToast={showToast} />}
-
+        projects={projects} adminTasks={adminTasks} onSave={saveTask} onClear={clearTask} showToast={showToast} T={T} />}
       {projectModal!==null&&<ProjectModal item={projectModal} projects={projects} adminTasks={adminTasks}
-        onClose={()=>setProjectModal(null)}
+        onClose={()=>setProjectModal(null)} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
             if(row.id) await supabase.from('projects').upsert(row)
@@ -751,9 +671,8 @@ export default function App() {
             const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[])
           }); setProjectModal(null)
         }} />}
-
       {adminTaskModal!==null&&<AdminTaskModal item={adminTaskModal} projects={projects} adminTasks={adminTasks}
-        onClose={()=>setAdminTaskModal(null)}
+        onClose={()=>setAdminTaskModal(null)} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
             if(row.id) await supabase.from('admin_tasks').upsert(row)
@@ -761,9 +680,8 @@ export default function App() {
             const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
           }); setAdminTaskModal(null)
         }} />}
-
       {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers}
-        onClose={()=>setMemberModal(null)}
+        onClose={()=>setMemberModal(null)} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
             if(row.id) await supabase.from('team_members').update(row).eq('id',row.id)
@@ -771,9 +689,8 @@ export default function App() {
             const r=await supabase.from('team_members').select('*').order('office').order('sort_order'); setTeamMembers(r.data||[])
           }); setMemberModal(null)
         }} />}
-
       {leaveModal!==null&&<LeaveModal item={leaveModal} teamMembers={teamMembers}
-        onClose={()=>setLeaveModal(null)} showToast={showToast}
+        onClose={()=>setLeaveModal(null)} showToast={showToast} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
             if(row.id&&upcomingLeaveRows.find(x=>x.id===row.id)) await supabase.from('upcoming_leave').update(row).eq('id',row.id)
@@ -781,8 +698,7 @@ export default function App() {
             const r=await supabase.from('upcoming_leave').select('*'); setUpcomingLeaveRows(r.data||[])
           }); setLeaveModal(null)
         }} />}
-
-      {phModal!==null&&<PHModal item={phModal} onClose={()=>setPhModal(null)} showToast={showToast}
+      {phModal!==null&&<PHModal item={phModal} onClose={()=>setPhModal(null)} showToast={showToast} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
             if(row.id&&publicHolidayRows.find(x=>x.id===row.id)) await supabase.from('public_holidays').update(row).eq('id',row.id)
@@ -790,17 +706,15 @@ export default function App() {
             const r=await supabase.from('public_holidays').select('*').order('iso_date'); setPublicHolidayRows(r.data||[])
           }); setPhModal(null)
         }} />}
-      </div>
     </div>
   )
 }
 
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // WORKLOAD TAB
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
-  gridWeeks,setGridWeeks,
-  teamMembers,projects,adminTasks,tasks,upcomingLeave,upcomingPH,
+  gridWeeks,setGridWeeks,teamMembers,projects,adminTasks,tasks,upcomingLeave,upcomingPH,
   upcomingLeaveRows,setUpcomingLeaveRows,publicHolidayRows,setPublicHolidayRows,
   officeFilter,setOfficeFilter,projectFilter,setProjectFilter,
   leaveFilter,setLeaveFilter,unassignedFilter,setUnassignedFilter,
@@ -809,11 +723,16 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
   unassigned,unassignedHrs,utilPct,statWeeks,setStatWeeks,
   getActive,setAssignModal,setLeaveModal,setPhModal,
   startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,
-  moveRow,handleRowDrop,withUndo,showToast}) {
+  moveRow,handleRowDrop,withUndo,showToast,T}) {
 
   const leaveByOffice={},phByOffice={}
   upcomingLeaveRows.forEach(l=>{if(!leaveByOffice[l.office])leaveByOffice[l.office]=[];leaveByOffice[l.office].push(l)})
   publicHolidayRows.forEach(p=>{if(!phByOffice[p.office])phByOffice[p.office]=[];phByOffice[p.office].push(p)})
+
+  // Sort leave entries by start_date ascending
+  Object.keys(leaveByOffice).forEach(o=>{
+    leaveByOffice[o].sort((a,b)=>(a.start_date||'').localeCompare(b.start_date||''))
+  })
 
   async function deleteLeave(id){
     await withUndo(async()=>{
@@ -839,64 +758,62 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
   const officeGroups={}
   filteredMembers.forEach(m=>{if(!officeGroups[m.office])officeGroups[m.office]=[];officeGroups[m.office].push(m)})
 
+  const thStyle={background:T.surfaceSecond,padding:'6px 5px 8px',textAlign:'center',
+    fontSize:10,color:T.textSecondary,border:`1px solid ${T.borderLight}`}
+  const thStyleToday={...thStyle,background:T.todayBg,borderBottom:`2px solid ${T.todayBorder}`}
+  const tdStyle={background:T.surfacePrimary,border:`1px solid ${T.borderLight}`,
+    verticalAlign:'top',cursor:'pointer',position:'relative'}
+
   const WeekToggle=({val,set})=>(
     <div style={{display:'flex',gap:3,marginTop:5}}>
       {[1,2,3,4].map(w=>(
         <button key={w} onClick={()=>set(w)}
           style={{padding:'1px 6px',borderRadius:3,fontSize:10,cursor:'pointer',
-            border:'1px solid #2a3050',
-            background:val===w?'#4f8ef7':'transparent',
-            color:val===w?'#fff':'#9aa3c2'}}>{w}w</button>
+            border:`1px solid ${T.border}`,
+            background:val===w?T.blue:'transparent',
+            color:val===w?'#fff':T.textSecondary}}>{w}w</button>
       ))}
     </div>
   )
 
-  // Active-filter toggle button helper
   const FilterToggleBtn=({active,onClick,color,children})=>(
     <button onClick={onClick}
       style={{marginTop:4,padding:'2px 8px',borderRadius:3,fontSize:10,cursor:'pointer',
-        border:`1px solid ${active?color:'#2a3050'}`,
+        border:`1px solid ${active?color:T.border}`,
         background:active?`${color}22`:'transparent',
-        color:active?color:'#9aa3c2',display:'flex',alignItems:'center',gap:4}}>
+        color:active?color:T.textSecondary,display:'flex',alignItems:'center',gap:4}}>
       {active?'x clear':'filter'} {children}
     </button>
   )
 
-  // Last workday of the grid (for nav label)
-  const lastDay = allWorkdays[allWorkdays.length-1]
+  const lastDay=allWorkdays[allWorkdays.length-1]
 
   return(
     <div>
       {/* Stat cards */}
       <div style={{display:'flex',gap:10,marginBottom:18,flexWrap:'wrap'}}>
-        <StatCard label="Total Team" color="#4f8ef7">
+        <StatCard label="Total Team" color={T.blue} T={T}>
           <span style={{fontSize:26,fontWeight:700}}>{teamMembers.length}</span>
         </StatCard>
         {allOffices.map(o=>(
-          <StatCard key={o} label={<span style={{display:'flex',alignItems:'center',gap:4}}>{o} <OfficeFlag office={o} size={13} /></span>} color={OFFICE_COLORS[o]||'#b87fff'}>
+          <StatCard key={o} label={<span style={{display:'flex',alignItems:'center',gap:4}}>{o} <OfficeFlag office={o} size={13} /></span>} color={OFFICE_COLORS[o]||'#b87fff'} T={T}>
             <span style={{fontSize:26,fontWeight:700}}>{teamMembers.filter(m=>m.office===o).length}</span>
           </StatCard>
         ))}
-        {/* On Leave card with filter toggle */}
-        <StatCard label="Team Members On Leave" color="#f75c5c">
+        <StatCard label="Team Members On Leave" color={T.red} T={T}>
           <span style={{fontSize:26,fontWeight:700}}>{onLeave}</span>
-          <div style={{fontSize:10,color:'#f75c5c',marginTop:2}}>{onLeaveHrs} hrs</div>
+          <div style={{fontSize:10,color:T.red,marginTop:2}}>{onLeaveHrs} hrs</div>
           <WeekToggle val={leaveStatWeeks} set={setLeaveStatWeeks} />
-          <FilterToggleBtn active={leaveFilter} onClick={()=>{setLeaveFilter(v=>!v);setUnassignedFilter(false)}} color="#f75c5c">
-            on leave
-          </FilterToggleBtn>
+          <FilterToggleBtn active={leaveFilter} onClick={()=>{setLeaveFilter(v=>!v);setUnassignedFilter(false)}} color={T.red}>on leave</FilterToggleBtn>
         </StatCard>
-        {/* Unassigned card with filter toggle */}
-        <StatCard label="Unassigned" color="#5a6380">
+        <StatCard label="Unassigned" color={T.gray} T={T}>
           <div style={{display:'flex',alignItems:'baseline',gap:6}}>
             <span style={{fontSize:26,fontWeight:700}}>{unassigned}</span>
-            <span style={{fontSize:11,color:'#5a6380'}}>days / {unassignedHrs} hrs</span>
+            <span style={{fontSize:11,color:T.gray}}>days / {unassignedHrs} hrs</span>
           </div>
-          <div style={{fontSize:10,color:'#4ff7a2',marginTop:2}}>Utilisation {utilPct}%</div>
+          <div style={{fontSize:10,color:T.green,marginTop:2}}>Utilisation {utilPct}%</div>
           <WeekToggle val={statWeeks} set={setStatWeeks} />
-          <FilterToggleBtn active={unassignedFilter} onClick={()=>{setUnassignedFilter(v=>!v);setLeaveFilter(false)}} color="#9aa3c2">
-            unassigned
-          </FilterToggleBtn>
+          <FilterToggleBtn active={unassignedFilter} onClick={()=>{setUnassignedFilter(v=>!v);setLeaveFilter(false)}} color={T.gray}>unassigned</FilterToggleBtn>
         </StatCard>
       </div>
 
@@ -905,9 +822,9 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
         {['all',...allOffices].map(o=>(
           <button key={o} onClick={()=>setOfficeFilter(o)}
             style={{padding:'4px 12px',borderRadius:20,fontSize:11,cursor:'pointer',
-              border:officeFilter===o?'none':'1px solid #2a3050',
-              background:officeFilter===o?(o==='all'?'#5a6380':OFFICE_COLORS[o]||'#b87fff'):'#181c27',
-              color:officeFilter===o?(o==='Chennai'||o==='Bangkok'?'#111':'#fff'):'#9aa3c2'}}>
+              border:officeFilter===o?'none':`1px solid ${T.border}`,
+              background:officeFilter===o?(o==='all'?T.gray:OFFICE_COLORS[o]||'#b87fff'):T.surfacePrimary,
+              color:officeFilter===o?'#fff':T.textSecondary}}>
             {o==='all'?'All Offices':<>{o} <OfficeFlag office={o} size={14} /></>}
           </button>
         ))}
@@ -918,51 +835,53 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
           <button onClick={()=>setProjectFilter('all')}
             style={{padding:'3px 10px',borderRadius:20,fontSize:10,cursor:'pointer',
-              border:projectFilter==='all'?'none':'1px solid #2a3050',
-              background:projectFilter==='all'?'#5a6380':'#181c27',
-              color:projectFilter==='all'?'#fff':'#9aa3c2'}}>All Projects</button>
+              border:projectFilter==='all'?'none':`1px solid ${T.border}`,
+              background:projectFilter==='all'?T.gray:T.surfacePrimary,
+              color:projectFilter==='all'?'#fff':T.textSecondary}}>All Projects</button>
           {activeProjectsInWindow.map(p=>(
             <button key={p.id} onClick={()=>setProjectFilter(p.id)}
               style={{padding:'3px 10px',borderRadius:20,fontSize:10,cursor:'pointer',
-                border:projectFilter===p.id?'none':'1px solid #2a3050',
-                background:projectFilter===p.id?p.color:'#181c27',
-                color:projectFilter===p.id?'#111':'#9aa3c2'}}>
+                border:projectFilter===p.id?'none':`1px solid ${T.border}`,
+                background:projectFilter===p.id?p.color:T.surfacePrimary,
+                color:projectFilter===p.id?'#111':T.textSecondary}}>
               {p.job?`${p.job} ${p.name}`:p.name}
             </button>
           ))}
         </div>
       )}
 
-      {/* Search + grid duration + week nav */}
+      {/* Search + view toggle + nav */}
       <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name..."
-          style={{background:'#1e2335',border:'1px solid #2a3050',color:'#e2e8ff',
+          style={{background:T.surfaceSecond,border:`1px solid ${T.border}`,color:T.textPrimary,
             padding:'6px 12px',borderRadius:4,fontSize:12,width:180}} />
-        {/* Grid duration toggle */}
         <div style={{display:'flex',gap:4,alignItems:'center'}}>
-          <span style={{fontSize:10,color:'#9aa3c2',marginRight:2}}>View:</span>
-          {[2,3,4].map(w=>(
+          <span style={{fontSize:10,color:T.textSecondary,marginRight:2}}>View:</span>
+          {[1,2,3,4].map(w=>(
             <button key={w} onClick={()=>setGridWeeks(w)}
               style={{padding:'4px 10px',borderRadius:4,fontSize:11,cursor:'pointer',
-                border:'1px solid #2a3050',
-                background:gridWeeks===w?'#4f8ef7':'#181c27',
-                color:gridWeeks===w?'#fff':'#9aa3c2'}}>{w}W</button>
+                border:`1px solid ${T.border}`,
+                background:gridWeeks===w?T.blue:T.surfacePrimary,
+                color:gridWeeks===w?'#fff':T.textSecondary}}>{w}W</button>
           ))}
         </div>
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}}>
-          <button className="btn" onClick={()=>setWeekStart(w=>addDays(w,-7))}>← Prev</button>
-          <div style={{fontSize:12,color:'#9aa3c2',textAlign:'center',minWidth:200}}>
-            <strong style={{display:'block',fontSize:13,color:'#e2e8ff'}}>
-              {fmtDisplay(allWorkdays[0])} – {fmtDisplay(lastDay)}
+          <button className="btn" style={{color:T.textSecondary,background:T.surfacePrimary,border:`1px solid ${T.border}`}}
+            onClick={()=>setWeekStart(w=>addDays(w,-7))}>Prev</button>
+          <div style={{fontSize:12,color:T.textSecondary,textAlign:'center',minWidth:200}}>
+            <strong style={{display:'block',fontSize:13,color:T.textPrimary}}>
+              {fmtDisplay(allWorkdays[0])} - {fmtDisplay(lastDay)}
             </strong>
             <span>{allWorkdays[0].toLocaleDateString('en-AU',{month:'short',year:'numeric'})}</span>
           </div>
-          <button className="btn" onClick={()=>setWeekStart(w=>addDays(w,7))}>Next →</button>
-          <button className="btn" onClick={()=>setWeekStart(getMondayOf(new Date()))}>Today</button>
+          <button className="btn" style={{color:T.textSecondary,background:T.surfacePrimary,border:`1px solid ${T.border}`}}
+            onClick={()=>setWeekStart(w=>addDays(w,7))}>Next</button>
+          <button className="btn" style={{color:T.textSecondary,background:T.surfacePrimary,border:`1px solid ${T.border}`}}
+            onClick={()=>setWeekStart(getMondayOf(new Date()))}>Today</button>
         </div>
       </div>
 
-      {/* Grid — multi-week, sticky header */}
+      {/* Grid */}
       <div style={{paddingBottom:10}}>
         <table style={{width:'100%',minWidth:900,borderCollapse:'collapse',tableLayout:'fixed'}}>
           <colgroup>
@@ -976,31 +895,31 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
             <th style={{...thStyle,position:'sticky',left:0,zIndex:11}}>Team Member</th>
             {weekSegments.flatMap((seg,wi)=>[
               ...seg.work.map((d,i)=>{
-                const ds=fmtDate(d), isToday=ds===fmtDate(new Date())
-                const dayIdx=wi*7+i
+                const ds=fmtDate(d),isToday=ds===fmtDate(new Date()),dayIdx=wi*7+i
                 return(
                   <th key={ds} data-date={ds} style={isToday?thStyleToday:thStyle}>
-                    {isToday&&<div style={{fontSize:8,color:'#f75c5c',fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
-                    <div style={{fontSize:11,color:isToday?'#fff':'#e2e8ff',fontWeight:500}}>{DAY_SHORT[dayIdx]}</div>
-                    <div style={{fontSize:9,color:'#9aa3c2'}}>{fmtDisplay(d)}</div>
+                    {isToday&&<div style={{fontSize:8,color:T.todayBorder,fontWeight:700,letterSpacing:.5,marginBottom:1}}>TODAY</div>}
+                    <div style={{fontSize:11,color:isToday?T.todayText:T.textPrimary,fontWeight:500}}>{DAY_SHORT[dayIdx]}</div>
+                    <div style={{fontSize:9,color:T.textSecondary}}>{fmtDisplay(d)}</div>
                   </th>
                 )
               }),
-              <th key={`ss${wi}`} data-weekend="1" style={{...thStyle,background:'#0d1018',opacity:.5,
-                fontSize:8,color:'#5a6380',writingMode:'vertical-rl'}}>S/S</th>
+              <th key={`ss${wi}`} data-weekend="1"
+                style={{...thStyle,background:T.mode==='dark'?'#0d1018':T.surfaceSecond,opacity:.5,
+                  fontSize:8,color:T.textMuted,writingMode:'vertical-rl'}}>S/S</th>
             ])}
           </tr></thead>
           <tbody>
             {allOffices.map(office=>{
               const members=officeGroups[office]; if(!members?.length) return null
-              const colSpan = weekSegments.length * 6 + 1  // name + (5 work + 1 ss) * numWeeks
+              const colSpan=weekSegments.length*6+1
               return[
                 <tr key={`sec-${office}`}>
                   <td colSpan={colSpan} style={{fontFamily:'Syne,sans-serif',fontSize:10,fontWeight:700,
                     letterSpacing:2,textTransform:'uppercase',padding:'6px 14px',
-                    color:OFFICE_COLORS[office]||'#b87fff',background:'#181c27',
+                    color:OFFICE_COLORS[office]||'#b87fff',background:T.sectionBg,
                     borderLeft:`3px solid ${OFFICE_COLORS[office]||'#b87fff'}`,
-                    borderBottom:'1px solid #2a3050'}}>
+                    borderBottom:`1px solid ${T.borderLight}`}}>
                     <span style={{display:'flex',alignItems:'center',gap:6}}>{office} Office <OfficeFlag office={office} size={13} /></span>
                   </td>
                 </tr>,
@@ -1013,7 +932,8 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
                     adjustTaskDate={adjustTaskDate}
                     rowDragSrc={rowDragSrc} setRowDragSrc={setRowDragSrc}
                     onMoveRow={(dir)=>moveRow(m.id,m.office,dir)}
-                    onRowDrop={()=>handleRowDrop(m.id,m.office)} />
+                    onRowDrop={()=>handleRowDrop(m.id,m.office)}
+                    T={T} tdStyle={tdStyle} />
                 ))
               ]
             })}
@@ -1022,65 +942,56 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
       </div>
 
       {/* Leave & PH panels */}
-      <SectionTitle title="🏖 Upcoming Leave" />
+      <SectionTitle title="Upcoming Leave" T={T} />
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
         {['Brisbane','Chennai','Bangkok'].map(o=>(
           <LeavePanel key={o} office={o} color={OFFICE_COLORS[o]}
             items={leaveByOffice[o]||[]} onAdd={()=>setLeaveModal({office:o})}
-            onEdit={item=>setLeaveModal(item)} onDelete={id=>deleteLeave(id)} />
+            onEdit={item=>setLeaveModal(item)} onDelete={id=>deleteLeave(id)} T={T} />
         ))}
       </div>
-      <SectionTitle title="🗓 Upcoming Public Holidays" />
+      <SectionTitle title="Upcoming Public Holidays" T={T} />
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:40}}>
         {['Brisbane','Chennai','Bangkok'].map(o=>(
           <PHPanel key={o} office={o} color={OFFICE_COLORS[o]}
             items={phByOffice[o]||[]} onAdd={()=>setPhModal({office:o})}
-            onEdit={item=>setPhModal(item)} onDelete={id=>deletePH(id)} />
+            onEdit={item=>setPhModal(item)} onDelete={id=>deletePH(id)} T={T} />
         ))}
       </div>
     </div>
   )
 }
 
-const thStyle={background:'#1e2335',padding:'6px 5px 8px',textAlign:'center',fontSize:10,color:'#9aa3c2',border:'1px solid #2a3050'}
-const thStyleToday={...thStyle,background:'#1a2540',borderBottom:'2px solid #f75c5c'}
-const tdStyle={background:'#181c27',border:'1px solid #2a3050',verticalAlign:'top',cursor:'pointer',position:'relative'}
-const tdStyleToday={...tdStyle,background:'#181d2a'}
-
-// Stat card — label on top, content below
-function StatCard({label,color,children}){
+function StatCard({label,color,children,T}){
   return(
-    <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,
+    <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,
       padding:'10px 14px',minWidth:100,flex:1}}>
-      <div style={{fontSize:10,color:'#9aa3c2',marginBottom:4,letterSpacing:.3}}>{label}</div>
+      <div style={{fontSize:10,color:T.textSecondary,marginBottom:4,letterSpacing:.3}}>{label}</div>
       <div style={{color,fontFamily:'system-ui,-apple-system,sans-serif'}}>{children}</div>
     </div>
   )
 }
 
-function SectionTitle({title}){
+function SectionTitle({title,T}){
   return(
     <div style={{fontFamily:'Syne,sans-serif',fontSize:12,fontWeight:700,letterSpacing:1.5,
-      textTransform:'uppercase',color:'#9aa3c2',marginTop:28,marginBottom:10,
+      textTransform:'uppercase',color:T.textSecondary,marginTop:28,marginBottom:10,
       display:'flex',alignItems:'center',gap:8}}>
-      {title}<div style={{flex:1,height:1,background:'#2a3050'}} />
+      {title}<div style={{flex:1,height:1,background:T.borderLight}} />
     </div>
   )
 }
 
-// ─── Member Row ───────────────────────────────────────────────────────
+// ── Member Row ─────────────────────────────────────────────────────────
 function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,
-  setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop}){
+  setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop,T,tdStyle}){
   const [hovered,setHovered]=useState(false)
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
-
-  // allWorkdays passed directly — used for arrow visibility checks
-  const allWorkDays = allWorkdays
+  const allWorkDays=allWorkdays
+  const todayDs=fmtDate(new Date())
 
   function renderWeek(workDays){
     const cells=[]; let i=0
-    const todayDs=fmtDate(new Date())
-
     while(i<workDays.length){
       const d=workDays[i],ds=fmtDate(d)
       const isToday=ds===todayDs
@@ -1088,100 +999,80 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
       if(!active){
         cells.push(
           <td key={ds} onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null})}
-            style={{...tdStyle,minHeight:52,background:isToday?'#181d2a':'#181c27'}}
-            onMouseEnter={e=>e.currentTarget.style.background=isToday?'#1e2640':'#232840'}
-            onMouseLeave={e=>e.currentTarget.style.background=isToday?'#181d2a':'#181c27'}>
+            style={{...tdStyle,minHeight:52,background:isToday?T.surfaceToday:T.surfacePrimary}}
+            onMouseEnter={e=>e.currentTarget.style.background=isToday?T.surfaceHover:T.surfaceHover}
+            onMouseLeave={e=>e.currentTarget.style.background=isToday?T.surfaceToday:T.surfacePrimary}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',
-              minHeight:52,color:'#5a6380',fontSize:10,padding:4}}>+ assign</div>
+              minHeight:52,color:T.textMuted,fontSize:10,padding:4}}>+ assign</div>
           </td>
         ); i++; continue
       }
       const {entry,startDs,isVirtual}=active
-
-      // Count span within this week segment
       let span=1,j=i+1
       while(j<workDays.length){
         const nA=getActive(member.name,fmtDate(workDays[j]))
         if(nA&&nA.startDs===startDs&&JSON.stringify(nA.entry)===JSON.stringify(entry)){span++;j++}else break
       }
 
-      // ── Arrow visibility ──
-      // Start arrows: show only on the very first workday cell of this task across both weeks.
-      // That is: no earlier workday in allWorkDays has this same task active.
-      const showStartArrows = !isVirtual && (() => {
-        for (const wd of allWorkDays) {
-          const wds = fmtDate(wd)
-          if (wds === ds) return true   // reached current cell first — this IS the first
-          const a = getActive(member.name, wds)
-          if (a && a.startDs === startDs) return false  // an earlier cell has this task
+      // Arrow visibility
+      const showStartArrows=!isVirtual&&(()=>{
+        for(const wd of allWorkDays){
+          const wds=fmtDate(wd)
+          if(wds===ds) return true
+          const a=getActive(member.name,wds)
+          if(a&&a.startDs===startDs) return false
         }
         return true
       })()
-
-      // End arrows: show only on the very last workday cell of this task across both weeks.
-      // That is: no later workday in allWorkDays has this same task active.
-      const lastCellDs = fmtDate(workDays[j-1])
-      const showEndArrows = !isVirtual && (() => {
-        let foundLast = false
-        for (let k = allWorkDays.length-1; k >= 0; k--) {
-          const wds = fmtDate(allWorkDays[k])
-          const a = getActive(member.name, wds)
-          if (a && a.startDs === startDs) {
-            foundLast = (wds === lastCellDs)
-            break
-          }
+      const lastCellDs=fmtDate(workDays[j-1])
+      const showEndArrows=!isVirtual&&(()=>{
+        for(let k=allWorkDays.length-1;k>=0;k--){
+          const wds=fmtDate(allWorkDays[k])
+          const a=getActive(member.name,wds)
+          if(a&&a.startDs===startDs) return wds===lastCellDs
         }
-        return foundLast
+        return false
       })()
 
-      const color=['leave','ph'].includes(entry.wtype)?null:getProjectColor(entry.pid,projects,adminTasks)
-      let bg='transparent',bc='#4f8ef7'
-      if(entry.wtype==='leave'){bg='rgba(247,92,92,.13)';bc='#f75c5c'}
-      else if(entry.wtype==='ph'){bg='rgba(247,162,79,.13)';bc='#f7a24f'}
-      else if(entry.wtype==='admin'){bg='rgba(90,99,128,.13)';bc='#5a6380'}
-      else if(color){const {r,g,b}=hexToRgb(color);bg=`rgba(${r},${g},${b},.18)`;bc=color}
-      const nc=entry.wtype==='leave'?'#f75c5c':entry.wtype==='ph'?'#f7a24f':entry.wtype==='admin'?'#9aa3c2':'#e2e8ff'
+      // Colours
+      const projColor=['leave','ph'].includes(entry.wtype)?null:getProjectColor(entry.pid,projects,adminTasks)
+      let bg=T.surfacePrimary,bc=T.blue,textColor=T.textPrimary
+      if(entry.wtype==='leave'){bg=T.redLight;bc=T.red;textColor=T.redText}
+      else if(entry.wtype==='ph'){bg=T.amberLight;bc=T.amber;textColor=T.amberText}
+      else if(entry.wtype==='admin'){bg=T.grayLight;bc=T.gray;textColor=T.textSecondary}
+      else if(projColor){const {r,g,b}=hexToRgb(projColor);bg=`rgba(${r},${g},${b},${T.mode==='dark'?.18:.15})`;bc=projColor;textColor=T.mode==='dark'?'#ffffff':projColor}
+
+      const arrowBtn={background:T.mode==='dark'?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',
+        border:'none',cursor:'pointer',color:T.mode==='dark'?'rgba(255,255,255,.4)':'rgba(0,0,0,.35)',
+        fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
 
       cells.push(
         <td key={ds} colSpan={span}
           style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bg,borderLeft:`3px solid ${bc}`}}
           onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry})}
-          onMouseDown={!isVirtual?(e=>{
-            if(e.target.closest('button')) return
-            if(e.button===0) startCopy(e,member.name,startDs)
-          }):undefined}>
+          onMouseDown={!isVirtual?(e=>{if(e.target.closest('button'))return;if(e.button===0)startCopy(e,member.name,startDs)}):undefined}>
           <div style={{padding:'4px 6px',display:'flex',alignItems:'flex-start',gap:3,minHeight:52}}>
-            {/* Start arrows — only on the very first rendered cell of this task */}
             {showStartArrows&&(
               <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
-                <button title="Move start earlier"
-                  onMouseDown={e=>e.stopPropagation()}
-                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1)}}
-                  style={arrowBtn}>◀</button>
-                <button title="Move start later"
-                  onMouseDown={e=>e.stopPropagation()}
-                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1)}}
-                  style={arrowBtn}>▶</button>
+                <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1)}} style={arrowBtn}>{'<'}</button>
+                <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1)}} style={arrowBtn}>{'>'}</button>
               </div>
             )}
             <div style={{flex:1,minWidth:0,userSelect:'none'}}>
-              <div style={{fontSize:10,fontWeight:500,color:nc,wordBreak:'break-word',lineHeight:1.3}}>{entry.task}</div>
-              {entry.notes&&<div style={{fontSize:9,color:'#9aa3c2',marginTop:2,wordBreak:'break-word',lineHeight:1.3}}>{entry.notes}</div>}
+              <div style={{fontSize:10,fontWeight:500,color:textColor,wordBreak:'break-word',lineHeight:1.3}}>{entry.task}</div>
+              {entry.notes&&<div style={{fontSize:9,color:T.textSecondary,marginTop:2,wordBreak:'break-word',lineHeight:1.3}}>{entry.notes}</div>}
               {entry.wtype&&!['leave','ph','admin'].includes(entry.wtype)&&(
-                <div style={{fontSize:9,color:'#9aa3c2',fontStyle:'italic',marginTop:1}}>{entry.wtype}</div>
+                <div style={{fontSize:9,color:T.textSecondary,fontStyle:'italic',marginTop:1}}>{entry.wtype}</div>
               )}
             </div>
-            {/* End arrows — only on the very last rendered cell of this task */}
             {showEndArrows&&(
               <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
-                <button title="Move end earlier"
-                  onMouseDown={e=>e.stopPropagation()}
-                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1)}}
-                  style={arrowBtn}>◀</button>
-                <button title="Move end later"
-                  onMouseDown={e=>e.stopPropagation()}
-                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1)}}
-                  style={arrowBtn}>▶</button>
+                <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1)}} style={arrowBtn}>{'<'}</button>
+                <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1)}} style={arrowBtn}>{'>'}</button>
               </div>
             )}
           </div>
@@ -1196,102 +1087,102 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
     <tr data-member-row={member.name}
       draggable onDragStart={()=>setRowDragSrc({id:member.id,office:member.office})}
       onDragOver={e=>e.preventDefault()} onDrop={onRowDrop}
-      style={{outline:isDragTarget?'1px dashed #4f8ef7':'none'}}
+      style={{outline:isDragTarget?`1px dashed ${T.blue}`:'none'}}
       onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
-      <td style={{background:'#1e2335',border:'1px solid #2a3050',padding:'6px 8px 6px 12px',
-        verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
+      <td style={{background:T.surfaceSecond,border:`1px solid ${T.borderLight}`,
+        padding:'6px 8px 6px 12px',verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
-          <span style={{cursor:'grab',color:'#5a6380',fontSize:12,opacity:hovered?1:0,transition:'opacity .15s',userSelect:'none'}}>⠿</span>
+          <span style={{cursor:'grab',color:T.textMuted,fontSize:12,opacity:hovered?1:0,transition:'opacity .15s',userSelect:'none'}}>::::</span>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,fontWeight:500,color:'#e2e8ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{member.name}</div>
-            <div style={{fontSize:9,color:'#9aa3c2'}}>{member.role}</div>
+            <div style={{fontSize:11,fontWeight:500,color:T.textPrimary,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{member.name}</div>
+            <div style={{fontSize:9,color:T.textSecondary}}>{member.role}</div>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:1,opacity:hovered?1:0,transition:'opacity .15s'}}>
-            <button onClick={()=>onMoveRow(-1)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'1px 3px',fontSize:10,lineHeight:1}}>▲</button>
-            <button onClick={()=>onMoveRow(1)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'1px 3px',fontSize:10,lineHeight:1}}>▼</button>
+            <button onClick={()=>onMoveRow(-1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>^</button>
+            <button onClick={()=>onMoveRow(1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>v</button>
           </div>
         </div>
       </td>
       {weekSegments.flatMap((seg,wi)=>[
         ...renderWeek(seg.work),
-        <td key={`ss${wi}`} style={{background:'#0a0d14',border:'1px solid #2a3050',width:26}} />
+        <td key={`ss${wi}`} style={{background:T.mode==='dark'?'#0a0d14':T.surfaceSecond,border:`1px solid ${T.borderLight}`,width:26}} />
       ])}
     </tr>
   )
 }
 
-const arrowBtn={background:'rgba(255,255,255,.06)',border:'none',cursor:'pointer',
-  color:'rgba(255,255,255,.4)',fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
-
-// ─── Leave & PH Panels ────────────────────────────────────────────────
-function LeavePanel({office,color,items,onAdd,onEdit,onDelete}){
+// ── Leave & PH Panels ─────────────────────────────────────────────────
+function LeavePanel({office,color,items,onAdd,onEdit,onDelete,T}){
   return(
-    <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,padding:14}}>
+    <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,padding:14}}>
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
         {office} <OfficeFlag office={office} size={13} />
-        <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
-          color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
+        <button onClick={onAdd} style={{marginLeft:'auto',background:T.surfaceSecond,border:`1px solid ${T.border}`,
+          color:T.textSecondary,padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
-      {items.length===0&&<div style={{fontSize:11,color:'#5a6380'}}>No upcoming leave</div>}
+      {items.length===0&&<div style={{fontSize:11,color:T.textMuted}}>No upcoming leave</div>}
       {items.map(l=>(
         <div key={l.id} style={{display:'flex',alignItems:'center',padding:'5px 0',
-          borderBottom:'1px solid #2a3050',fontSize:11,gap:6}}>
-          <span style={{color:'#e2e8ff',flex:1}}>{l.name}</span>
-          <span style={{color:'#9aa3c2',fontSize:10,whiteSpace:'nowrap'}}>
-            {l.start_date?fmtLeaveDate(l.start_date):''} – {l.end_date?fmtLeaveDate(l.end_date):''}
+          borderBottom:`1px solid ${T.borderLight}`,fontSize:11,gap:6}}>
+          <span style={{color:T.textPrimary,flex:1}}>{l.name}</span>
+          <span style={{color:T.textSecondary,fontSize:10,whiteSpace:'nowrap'}}>
+            {l.start_date?fmtLeaveDate(l.start_date):''} - {l.end_date?fmtLeaveDate(l.end_date):''}
           </span>
-          <button onClick={()=>onEdit(l)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 4px'}}>✏️</button>
-          <button onClick={()=>onDelete(l.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#f75c5c',padding:'2px 4px',fontSize:13}}>✕</button>
+          <button onClick={()=>onEdit(l)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px'}}>edit</button>
+          <button onClick={()=>onDelete(l.id)} style={{background:'none',border:'none',cursor:'pointer',color:T.red,padding:'2px 4px',fontSize:13}}>x</button>
         </div>
       ))}
     </div>
   )
 }
 
-function PHPanel({office,color,items,onAdd,onEdit,onDelete}){
+function PHPanel({office,color,items,onAdd,onEdit,onDelete,T}){
   return(
-    <div style={{background:'#181c27',border:'1px solid rgba(247,162,79,.2)',borderRadius:6,padding:14}}>
+    <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,padding:14}}>
       <div style={{fontFamily:'Syne,sans-serif',fontSize:11,fontWeight:700,letterSpacing:1.5,
         textTransform:'uppercase',color,marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
         <span style={{width:7,height:7,borderRadius:'50%',background:color,display:'inline-block'}} />
         {office} <OfficeFlag office={office} size={13} />
-        <button onClick={onAdd} style={{marginLeft:'auto',background:'#1e2335',border:'1px solid #2a3050',
-          color:'#9aa3c2',padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
+        <button onClick={onAdd} style={{marginLeft:'auto',background:T.surfaceSecond,border:`1px solid ${T.border}`,
+          color:T.textSecondary,padding:'2px 8px',borderRadius:3,cursor:'pointer',fontSize:14}}>+</button>
       </div>
-      {items.length===0&&<div style={{fontSize:11,color:'#5a6380'}}>No upcoming public holidays</div>}
+      {items.length===0&&<div style={{fontSize:11,color:T.textMuted}}>No upcoming public holidays</div>}
       {items.map(p=>(
         <div key={p.id} style={{display:'flex',alignItems:'center',padding:'5px 0',
-          borderBottom:'1px solid #2a3050',fontSize:11,gap:6}}>
-          <span style={{color:'#9aa3c2',flex:1}}>📅 {p.name}</span>
-          <span style={{color:'#9aa3c2',fontSize:10,whiteSpace:'nowrap'}}>{p.iso_date?fmtPHDate(p.iso_date):p.display_date}</span>
-          <button onClick={()=>onEdit(p)} style={{background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 4px'}}>✏️</button>
-          <button onClick={()=>onDelete(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#f75c5c',padding:'2px 4px',fontSize:13}}>✕</button>
+          borderBottom:`1px solid ${T.borderLight}`,fontSize:11,gap:6}}>
+          <span style={{color:T.textSecondary,flex:1}}>{p.name}</span>
+          <span style={{color:T.textSecondary,fontSize:10,whiteSpace:'nowrap'}}>{p.iso_date?fmtPHDate(p.iso_date):p.display_date}</span>
+          <button onClick={()=>onEdit(p)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px'}}>edit</button>
+          <button onClick={()=>onDelete(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:T.red,padding:'2px 4px',fontSize:13}}>x</button>
         </div>
       ))}
     </div>
   )
 }
 
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // PROJECTS TAB
-// ═════════════════════════════════════════════════════════════════════
-function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectModal,setAdminTaskModal,withUndo}){
+// ════════════════════════════════════════════════════════════════════
+function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectModal,setAdminTaskModal,withUndo,T}){
   const [pSort,setPSort]=useState({col:'job',dir:1})
   const [aSort,setASort]=useState({col:'name',dir:1})
   function tog(cur,col,set){ cur.col===col?set({col,dir:-cur.dir}):set({col,dir:1}) }
   const sp=[...projects].sort((a,b)=>{ const av=(a[pSort.col]||'').toLowerCase(),bv=(b[pSort.col]||'').toLowerCase(); return av<bv?-pSort.dir:av>bv?pSort.dir:0 })
   const sa=[...adminTasks].sort((a,b)=>{ const av=(a[aSort.col]||'').toLowerCase(),bv=(b[aSort.col]||'').toLowerCase(); return av<bv?-aSort.dir:av>bv?aSort.dir:0 })
+  const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:T.textSecondary,fontWeight:500,borderBottom:`1px solid ${T.border}`,background:T.surfaceSecond}
+  const adminTd={padding:'8px 14px',verticalAlign:'middle',color:T.textPrimary}
   const SH=({col,sort,onTog,ch})=>(
     <th style={{...adminTh,cursor:'pointer',userSelect:'none'}} onClick={()=>onTog(col)}>
-      {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
+      {ch}{sort.col===col?(sort.dir===1?' ^':' v'):''}
     </th>
   )
+  const iconBtn={background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 6px',fontSize:13}
   return(
     <div>
-      <AdminSection title="🏗 Active Projects" onAdd={()=>setProjectModal({})}>
-        <table style={adminTableStyle}><thead><tr>
+      <AdminSection title="Active Projects" onAdd={()=>setProjectModal({})} T={T}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>
           <th style={adminTh}>Colour</th>
           <SH col="job" sort={pSort} onTog={c=>tog(pSort,c,setPSort)} ch="Job #" />
           <SH col="name" sort={pSort} onTog={c=>tog(pSort,c,setPSort)} ch="Project Name" />
@@ -1299,38 +1190,38 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
           <th style={adminTh}>Actions</th>
         </tr></thead><tbody>
           {sp.map(p=>(
-            <tr key={p.id} style={{borderBottom:'1px solid #2a3050'}}>
+            <tr key={p.id} style={{borderBottom:`1px solid ${T.border}`}}>
               <td style={adminTd}><span style={{width:12,height:12,borderRadius:'50%',background:p.color,display:'inline-block'}} /></td>
               <td style={adminTd}>{p.job}</td><td style={adminTd}>{p.name}</td>
               <td style={adminTd}><StatusBadge s={p.status} /></td>
               <td style={adminTd}>
-                <button onClick={()=>setProjectModal(p)} style={iconBtn}>✏️</button>
+                <button onClick={()=>setProjectModal(p)} style={iconBtn}>edit</button>
                 <button onClick={async()=>{await withUndo(async()=>{
                   await supabase.from('projects').delete().eq('id',p.id)
                   const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[])
-                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+                })}} style={{...iconBtn,color:T.red}}>x</button>
               </td>
             </tr>
           ))}
         </tbody></table>
       </AdminSection>
-      <AdminSection title="⚙️ Admin & Recurring Tasks" onAdd={()=>setAdminTaskModal({})}>
-        <table style={adminTableStyle}><thead><tr>
+      <AdminSection title="Admin & Recurring Tasks" onAdd={()=>setAdminTaskModal({})} T={T}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>
           <th style={adminTh}>Colour</th>
           <SH col="name" sort={aSort} onTog={c=>tog(aSort,c,setASort)} ch="Task Name" />
           <SH col="cat" sort={aSort} onTog={c=>tog(aSort,c,setASort)} ch="Category" />
           <th style={adminTh}>Actions</th>
         </tr></thead><tbody>
           {sa.map(a=>(
-            <tr key={a.id} style={{borderBottom:'1px solid #2a3050'}}>
+            <tr key={a.id} style={{borderBottom:`1px solid ${T.border}`}}>
               <td style={adminTd}><span style={{width:12,height:12,borderRadius:'50%',background:a.color,display:'inline-block'}} /></td>
               <td style={adminTd}>{a.name}</td><td style={adminTd}>{a.cat}</td>
               <td style={adminTd}>
-                <button onClick={()=>setAdminTaskModal(a)} style={iconBtn}>✏️</button>
+                <button onClick={()=>setAdminTaskModal(a)} style={iconBtn}>edit</button>
                 <button onClick={async()=>{await withUndo(async()=>{
                   await supabase.from('admin_tasks').delete().eq('id',a.id)
                   const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
-                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+                })}} style={{...iconBtn,color:T.red}}>x</button>
               </td>
             </tr>
           ))}
@@ -1340,10 +1231,10 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
   )
 }
 
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // TEAM TAB
-// ═════════════════════════════════════════════════════════════════════
-function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo}){
+// ════════════════════════════════════════════════════════════════════
+function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
   const [sort,setSort]=useState({col:'office',dir:1})
   function toggle(col){ setSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
   const sorted=[...teamMembers].sort((a,b)=>{
@@ -1351,38 +1242,41 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo}){
     const bv=(b[sort.col]||'').toString().toLowerCase()
     return av<bv?-sort.dir:av>bv?sort.dir:0
   })
+  const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:T.textSecondary,fontWeight:500,borderBottom:`1px solid ${T.border}`,background:T.surfaceSecond,cursor:'pointer',userSelect:'none'}
+  const adminTd={padding:'8px 14px',verticalAlign:'middle',color:T.textPrimary}
+  const iconBtn={background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 6px',fontSize:13}
   const SH=({col,ch,width})=>(
-    <th style={{...adminTh,cursor:'pointer',userSelect:'none',width:width||'auto'}} onClick={()=>toggle(col)}>
-      {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
+    <th style={{...adminTh,width:width||'auto'}} onClick={()=>toggle(col)}>
+      {ch}{sort.col===col?(sort.dir===1?' ^':' v'):''}
     </th>
   )
   return(
     <div style={{maxWidth:700}}>
-      <AdminSection title="👥 Team Members" onAdd={()=>setMemberModal({})}>
-        <table style={{...adminTableStyle,tableLayout:'fixed'}}><thead><tr>
+      <AdminSection title="Team Members" onAdd={()=>setMemberModal({})} T={T}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}><thead><tr>
           <SH col="name" ch="Name" width="200px" />
           <SH col="role" ch="Role" width="180px" />
           <SH col="office" ch="Office" width="160px" />
           <th style={{...adminTh,width:90}}>Actions</th>
         </tr></thead><tbody>
           {sorted.map(m=>(
-            <tr key={m.id} style={{borderBottom:'1px solid #2a3050'}}>
+            <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
               <td style={adminTd}><strong>{m.name}</strong></td>
-              <td style={{...adminTd,color:'#9aa3c2'}}>{m.role}</td>
+              <td style={{...adminTd,color:T.textSecondary}}>{m.role}</td>
               <td style={adminTd}>
                 <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
                   borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
                   color:getOfficeColor(m.office)}}>
-                  {m.office} <OfficeFlag office={m.office} size={13} />
+                  {m.office} <OfficeFlag office={m.office} size={12} />
                 </span>
               </td>
               <td style={adminTd}>
-                <button onClick={()=>setMemberModal(m)} style={iconBtn}>✏️</button>
+                <button onClick={()=>setMemberModal(m)} style={iconBtn}>edit</button>
                 <button onClick={async()=>{await withUndo(async()=>{
                   await supabase.from('team_members').delete().eq('id',m.id)
                   const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
                   setTeamMembers(r.data||[])
-                })}} style={{...iconBtn,color:'#f75c5c'}}>✕</button>
+                })}} style={{...iconBtn,color:T.red}}>x</button>
               </td>
             </tr>
           ))}
@@ -1400,13 +1294,13 @@ function StatusBadge({s}){
   return<span style={{padding:'2px 8px',borderRadius:10,fontSize:10,background:bg,color,border:`1px solid ${border}`}}>{s}</span>
 }
 
-function AdminSection({title,onAdd,children}){
+function AdminSection({title,onAdd,children,T}){
   return(
-    <div style={{background:'#181c27',border:'1px solid #2a3050',borderRadius:6,marginBottom:16,overflow:'hidden'}}>
+    <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,marginBottom:16,overflow:'hidden'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-        padding:'12px 16px',background:'#1e2335',borderBottom:'1px solid #2a3050'}}>
-        <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700}}>{title}</div>
-        <button onClick={onAdd} style={{background:'#4f8ef7',border:'none',color:'#fff',
+        padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`}}>
+        <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>{title}</div>
+        <button onClick={onAdd} style={{background:T.blue,border:'none',color:'#fff',
           padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>+ Add</button>
       </div>
       {children}
@@ -1414,16 +1308,12 @@ function AdminSection({title,onAdd,children}){
   )
 }
 
-const adminTableStyle={width:'100%',borderCollapse:'collapse',fontSize:12}
-const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:'#9aa3c2',fontWeight:500,borderBottom:'1px solid #2a3050',background:'#1e2335'}
-const adminTd={padding:'8px 14px',verticalAlign:'middle'}
-const iconBtn={background:'none',border:'none',cursor:'pointer',color:'#9aa3c2',padding:'2px 6px',fontSize:13}
-
-// ═════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // MODALS
-// ═════════════════════════════════════════════════════════════════════
-function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast}){
+// ════════════════════════════════════════════════════════════════════
+function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast,T}){
   const {name,dateStr,entry}=modal
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [pid,setPid]=useState(()=>{
     if(!entry) return ''
     if(entry.task==='Annual Leave') return '__annual_leave__'
@@ -1431,8 +1321,7 @@ function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast
     if(!entry.pid&&entry.task) return '__custom__'
     return entry.pid||''
   })
-  const [customTask,setCustomTask]=useState(
-    entry&&!entry.pid&&entry.task&&entry.task!=='Annual Leave'&&entry.task!=='Sick Leave'?entry.task:'')
+  const [customTask,setCustomTask]=useState(entry&&!entry.pid&&entry.task&&entry.task!=='Annual Leave'&&entry.task!=='Sick Leave'?entry.task:'')
   const [wtype,setWtype]=useState(entry?.wtype||'modelling')
   const [endDate,setEndDate]=useState(entry?.end_date||dateStr)
   const [notes,setNotes]=useState(entry?.notes||'')
@@ -1448,30 +1337,30 @@ function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast
     await onSave(name,dateStr,isLeave?'':pid,label,fw,endDate,notes); onClose()
   }
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{name}</h3>
-      <div style={{fontSize:11,color:'#5a6380',marginBottom:18}}>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{name}</h3>
+      <div style={{fontSize:11,color:T.textSecondary,marginBottom:18}}>
         {d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
       </div>
       <label style={I.label}>Project / Task</label>
       <select value={pid} onChange={e=>setPid(e.target.value)} style={I.base}>
-        <option value="">— select —</option>
+        <option value="">- select -</option>
         <optgroup label="Leave">
           <option value="__annual_leave__">Annual Leave</option>
           <option value="__sick_leave__">Sick Leave</option>
         </optgroup>
         {projects.filter(p=>p.status==='active').length>0&&<optgroup label="Active Projects">
-          {projects.filter(p=>p.status==='active').map(p=><option key={p.id} value={p.id}>{p.job} — {p.name}</option>)}
+          {projects.filter(p=>p.status==='active').map(p=><option key={p.id} value={p.id}>{p.job} - {p.name}</option>)}
         </optgroup>}
         {adminTasks.length>0&&<optgroup label="Admin & Recurring">
           {adminTasks.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
         </optgroup>}
-        <option value="__custom__">✏️ Custom…</option>
+        <option value="__custom__">Custom...</option>
       </select>
       {pid==='__custom__'&&<input value={customTask} onChange={e=>setCustomTask(e.target.value)}
-        placeholder="Task description…" style={{...I.base,marginTop:6}} />}
-      {isLeave&&<div style={{fontSize:10,color:'#f75c5c',marginTop:6,padding:'4px 8px',
-        background:'rgba(247,92,92,.1)',borderRadius:4}}>Work type set automatically to Leave</div>}
+        placeholder="Task description..." style={{...I.base,marginTop:6}} />}
+      {isLeave&&<div style={{fontSize:10,color:T.red,marginTop:6,padding:'4px 8px',
+        background:T.redLight,borderRadius:4}}>Work type set automatically to Leave</div>}
       <div style={{...I.row,marginTop:13,opacity:isLeave?.5:1}}>
         <div><label style={I.label}>Work Type</label>
           <select value={wtype} onChange={e=>setWtype(e.target.value)} style={I.base} disabled={isLeave}>
@@ -1484,30 +1373,31 @@ function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast
           <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={I.base} /></div>
       </div>
       <label style={I.label}>Notes</label>
-      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional notes…"
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional notes..."
         style={{...I.base,resize:'vertical',minHeight:50}} />
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         {entry&&<button onClick={async()=>{await onClear(name,dateStr);onClose()}}
-          style={{...btnBase,borderColor:'#f75c5c',color:'#f75c5c'}}>Clear</button>}
+          style={{...btnBase,borderColor:T.red,color:T.red}}>Clear</button>}
         <button onClick={onClose} style={btnBase}>Cancel</button>
-        <button onClick={save} style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+        <button onClick={save} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
 }
 
-function ProjectModal({item,onClose,onSave,projects,adminTasks}){
+function ProjectModal({item,onClose,onSave,projects,adminTasks,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [job,setJob]=useState(item?.job||'')
   const [name,setName]=useState(item?.name||'')
   const [status,setStatus]=useState(item?.status||'active')
   const [color,setColor]=useState(item?.color||nextAutoColor(projects,adminTasks))
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{item?.id?'Edit Project':'Add Project'}</h3>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Project':'Add Project'}</h3>
       <label style={I.label}>Job #</label>
       <input value={job} onChange={e=>setJob(e.target.value)} placeholder="e.g. 23-081" style={I.base} />
       <label style={I.label}>Project Name</label>
-      <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Waterfront" style={I.base} />
+      <input value={name} onChange={e=>setName(e.target.value)} style={I.base} />
       <label style={I.label}>Status</label>
       <select value={status} onChange={e=>setStatus(e.target.value)} style={I.base}>
         <option value="active">Active</option><option value="onhold">On Hold</option><option value="completed">Completed</option>
@@ -1515,25 +1405,26 @@ function ProjectModal({item,onClose,onSave,projects,adminTasks}){
       <label style={I.label}>Colour</label>
       <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
         <input type="color" value={color} onChange={e=>setColor(e.target.value)}
-          style={{height:36,padding:'2px 4px',width:60,background:'#1e2335',border:'1px solid #2a3050',borderRadius:4}} />
-        <span style={{fontSize:11,color:'#9aa3c2'}}>{color} (auto-assigned, change if needed)</span>
+          style={{height:36,padding:'2px 4px',width:60,background:T.surfaceSecond,border:`1px solid ${T.border}`,borderRadius:4}} />
+        <span style={{fontSize:11,color:T.textSecondary}}>{color}</span>
       </div>
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={()=>onSave({...item,job,name,status,color})}
-          style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+          style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
 }
 
-function AdminTaskModal({item,onClose,onSave,projects,adminTasks}){
+function AdminTaskModal({item,onClose,onSave,projects,adminTasks,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [name,setName]=useState(item?.name||'')
   const [cat,setCat]=useState(item?.cat||'admin')
   const [color,setColor]=useState(item?.color||nextAutoColor(projects,adminTasks))
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{item?.id?'Edit Task':'Add Admin Task'}</h3>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Task':'Add Admin Task'}</h3>
       <label style={I.label}>Task Name</label>
       <input value={name} onChange={e=>setName(e.target.value)} style={I.base} />
       <label style={I.label}>Category</label>
@@ -1544,19 +1435,20 @@ function AdminTaskModal({item,onClose,onSave,projects,adminTasks}){
       <label style={I.label}>Colour</label>
       <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
         <input type="color" value={color} onChange={e=>setColor(e.target.value)}
-          style={{height:36,padding:'2px 4px',width:60,background:'#1e2335',border:'1px solid #2a3050',borderRadius:4}} />
-        <span style={{fontSize:11,color:'#9aa3c2'}}>{color}</span>
+          style={{height:36,padding:'2px 4px',width:60,background:T.surfaceSecond,border:`1px solid ${T.border}`,borderRadius:4}} />
+        <span style={{fontSize:11,color:T.textSecondary}}>{color}</span>
       </div>
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={()=>onSave({...item,name,cat,color})}
-          style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+          style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
 }
 
-function MemberModal({item,onClose,onSave,teamMembers}){
+function MemberModal({item,onClose,onSave,teamMembers,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [name,setName]=useState(item?.name||'')
   const [role,setRole]=useState(item?.role||'')
   const [office,setOffice]=useState(item?.office||'Brisbane')
@@ -1564,8 +1456,8 @@ function MemberModal({item,onClose,onSave,teamMembers}){
   const known=['Brisbane','Chennai','Bangkok']
   const custom=[...new Set((teamMembers||[]).map(m=>m.office).filter(o=>!known.includes(o)))]
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{item?.id?'Edit Member':'Add Member'}</h3>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Member':'Add Member'}</h3>
       <label style={I.label}>Name</label>
       <input value={name} onChange={e=>setName(e.target.value)} placeholder="Full name" style={I.base} />
       <label style={I.label}>Role</label>
@@ -1573,23 +1465,24 @@ function MemberModal({item,onClose,onSave,teamMembers}){
       <label style={I.label}>Office</label>
       <select value={office} onChange={e=>setOffice(e.target.value)} style={I.base}>
         {[...known,...custom].map(o=><option key={o}>{o}</option>)}
-        <option value="__other__">Other (specify)…</option>
+        <option value="__other__">Other (specify)...</option>
       </select>
       {office==='__other__'&&<input value={customOffice} onChange={e=>setCustomOffice(e.target.value)}
-        placeholder="Office name…" style={{...I.base,marginTop:6}} />}
+        placeholder="Office name..." style={{...I.base,marginTop:6}} />}
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={()=>{
           const fo=office==='__other__'?customOffice.trim():office
           if(!name||!fo) return
           onSave({...item,name,role,office:fo,sort_order:item?.sort_order||99})
-        }} style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+        }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
 }
 
-function LeaveModal({item,onClose,onSave,teamMembers,showToast}){
+function LeaveModal({item,onClose,onSave,teamMembers,showToast,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [office,setOffice]=useState(item?.office||'Brisbane')
   const [name,setName]=useState(item?.name||'')
   const [startDate,setStartDate]=useState(item?.start_date||'')
@@ -1597,15 +1490,15 @@ function LeaveModal({item,onClose,onSave,teamMembers,showToast}){
   const [dates,setDates]=useState(item?.dates||'')
   const members=teamMembers.filter(m=>m.office===office)
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{item?.id?'Edit Leave':'Add Leave'}</h3>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Leave':'Add Leave'}</h3>
       <label style={I.label}>Office</label>
       <select value={office} onChange={e=>{setOffice(e.target.value);setName('')}} style={I.base}>
         {['Brisbane','Chennai','Bangkok'].map(o=><option key={o}>{o}</option>)}
       </select>
       <label style={I.label}>Person</label>
       <select value={name} onChange={e=>setName(e.target.value)} style={I.base}>
-        <option value="">— select —</option>
+        <option value="">- select -</option>
         {members.map(m=><option key={m.id} value={m.name}>{m.name}</option>)}
       </select>
       <div style={I.row}>
@@ -1615,7 +1508,7 @@ function LeaveModal({item,onClose,onSave,teamMembers,showToast}){
           <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={I.base} /></div>
       </div>
       <label style={I.label}>Display Label (auto if blank)</label>
-      <input value={dates} onChange={e=>setDates(e.target.value)} placeholder="e.g. 05 May – 18 May" style={I.base} />
+      <input value={dates} onChange={e=>setDates(e.target.value)} placeholder="e.g. 05 May - 18 May" style={I.base} />
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={()=>{
@@ -1624,23 +1517,24 @@ function LeaveModal({item,onClose,onSave,teamMembers,showToast}){
           if(!d){
             const s=parseLocalDate(startDate),e=parseLocalDate(endDate)
             const n=Math.round((e-s)/86400000)+1
-            d=`${fmtLeaveDate(startDate)} – ${fmtLeaveDate(endDate)}${n>1?' ('+n+' days)':''}`
+            d=`${fmtLeaveDate(startDate)} - ${fmtLeaveDate(endDate)}${n>1?' ('+n+' days)':''}`
           }
           onSave({...item,office,name,start_date:startDate,end_date:endDate,dates:d})
-        }} style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+        }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
 }
 
-function PHModal({item,onClose,onSave,showToast}){
+function PHModal({item,onClose,onSave,showToast,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
   const [office,setOffice]=useState(item?.office||'Brisbane')
   const [name,setName]=useState(item?.name||'')
   const [isoDate,setIsoDate]=useState(item?.iso_date||'')
   const [endIsoDate,setEndIsoDate]=useState(item?.end_iso_date||'')
   return(
-    <Modal open onClose={onClose}>
-      <h3 style={modalH3}>{item?.id?'Edit Public Holiday':'Add Public Holiday'}</h3>
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Public Holiday':'Add Public Holiday'}</h3>
       <label style={I.label}>Office</label>
       <select value={office} onChange={e=>setOffice(e.target.value)} style={I.base}>
         {['Brisbane','Chennai','Bangkok'].map(o=><option key={o}>{o}</option>)}
@@ -1653,17 +1547,17 @@ function PHModal({item,onClose,onSave,showToast}){
         <div><label style={I.label}>End Date (optional)</label>
           <input type="date" value={endIsoDate} onChange={e=>setEndIsoDate(e.target.value)} style={I.base} /></div>
       </div>
-      {isoDate&&<div style={{fontSize:11,color:'#f7a24f',marginTop:8}}>
-        Preview: {fmtPHDate(isoDate)}{endIsoDate&&endIsoDate!==isoDate?` – ${fmtPHDate(endIsoDate)}`:''}
+      {isoDate&&<div style={{fontSize:11,color:T.amber,marginTop:8}}>
+        Preview: {fmtPHDate(isoDate)}{endIsoDate&&endIsoDate!==isoDate?` - ${fmtPHDate(endIsoDate)}`:''}
       </div>}
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={()=>{
           if(!name||!isoDate){showToast('Name and date required');return}
           const display=endIsoDate&&endIsoDate!==isoDate
-            ?`${fmtPHDate(isoDate)} – ${fmtPHDate(endIsoDate)}`:fmtPHDate(isoDate)
+            ?`${fmtPHDate(isoDate)} - ${fmtPHDate(endIsoDate)}`:fmtPHDate(isoDate)
           onSave({...item,office,name,iso_date:isoDate,end_iso_date:endIsoDate||null,display_date:display})
-        }} style={{...btnBase,background:'#4f8ef7',borderColor:'#4f8ef7',color:'#fff'}}>Save</button>
+        }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
   )
