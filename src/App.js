@@ -1186,17 +1186,25 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
       onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
       <td style={{background:T.surfaceSecond,border:`1px solid ${T.borderLight}`,
         padding:'6px 8px 6px 12px',verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
-        <div style={{display:'flex',alignItems:'center',gap:6}}>
-          <span style={{cursor:'grab',color:T.textMuted,fontSize:12,opacity:hovered?1:0,transition:'opacity .15s',userSelect:'none'}}>::::</span>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,fontWeight:500,color:T.textPrimary,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{member.name}</div>
-            <div style={{fontSize:9,color:T.textSecondary}}>{member.role}</div>
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:1,opacity:hovered?1:0,transition:'opacity .15s'}}>
-            <button onClick={()=>onMoveRow(-1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>^</button>
-            <button onClick={()=>onMoveRow(1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>v</button>
-          </div>
-        </div>
+        {(()=>{
+          const cat=getRoleCat(member.role)
+          const cc=CAT_COLORS[cat]
+          return(
+            <div style={{display:'flex',alignItems:'center',gap:6,
+              background:cc.bg,borderLeft:`3px solid ${cc.border}`,
+              margin:'-6px -8px -6px -12px',padding:'6px 8px 6px 9px',height:'100%'}}>
+              <span style={{cursor:'grab',color:T.textMuted,fontSize:12,opacity:hovered?1:0,transition:'opacity .15s',userSelect:'none'}}>::::</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:500,color:T.textPrimary,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{member.name}</div>
+                <div style={{fontSize:9,color:cc.text,opacity:.8}}>{member.role}</div>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:1,opacity:hovered?1:0,transition:'opacity .15s'}}>
+                <button onClick={()=>onMoveRow(-1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>^</button>
+                <button onClick={()=>onMoveRow(1)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'1px 3px',fontSize:10,lineHeight:1}}>v</button>
+              </div>
+            </div>
+          )
+        })()}
       </td>
       {weekSegments.flatMap((seg,wi)=>[
         ...renderWeek(seg.work),
@@ -1225,7 +1233,7 @@ function LeavePanel({office,color,items,onAdd,onEdit,onDelete,T}){
           <span style={{color:T.textSecondary,fontSize:10,whiteSpace:'nowrap'}}>
             {l.start_date?fmtLeaveDate(l.start_date):''} - {l.end_date?fmtLeaveDate(l.end_date):''}
           </span>
-          <button onClick={()=>onEdit(l)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px'}}>edit</button>
+          <button onClick={()=>onEdit(l)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px',fontSize:15}}>✎</button>
           <button onClick={()=>onDelete(l.id)} style={{background:'none',border:'none',cursor:'pointer',color:T.red,padding:'2px 4px',fontSize:13}}>x</button>
         </div>
       ))}
@@ -1249,7 +1257,7 @@ function PHPanel({office,color,items,onAdd,onEdit,onDelete,T}){
           borderBottom:`1px solid ${T.borderLight}`,fontSize:11,gap:6}}>
           <span style={{color:T.textSecondary,flex:1}}>{p.name}</span>
           <span style={{color:T.textSecondary,fontSize:10,whiteSpace:'nowrap'}}>{p.iso_date?fmtPHDate(p.iso_date):p.display_date}</span>
-          <button onClick={()=>onEdit(p)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px'}}>edit</button>
+          <button onClick={()=>onEdit(p)} style={{background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 4px',fontSize:15}}>✎</button>
           <button onClick={()=>onDelete(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:T.red,padding:'2px 4px',fontSize:13}}>x</button>
         </div>
       ))}
@@ -1290,7 +1298,7 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
               <td style={adminTd}>{p.job}</td><td style={adminTd}>{p.name}</td>
               <td style={adminTd}><StatusBadge s={p.status} /></td>
               <td style={adminTd}>
-                <button onClick={()=>setProjectModal(p)} style={iconBtn}>edit</button>
+                <button onClick={()=>setProjectModal(p)} style={{...iconBtn,fontSize:15}}>✎</button>
                 <button onClick={async()=>{await withUndo(async()=>{
                   await supabase.from('projects').delete().eq('id',p.id)
                   const r=await supabase.from('projects').select('*').order('job'); setProjects(r.data||[])
@@ -1312,7 +1320,7 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
               <td style={adminTd}><span style={{width:12,height:12,borderRadius:'50%',background:a.color,display:'inline-block'}} /></td>
               <td style={adminTd}>{a.name}</td><td style={adminTd}>{a.cat}</td>
               <td style={adminTd}>
-                <button onClick={()=>setAdminTaskModal(a)} style={iconBtn}>edit</button>
+                <button onClick={()=>setAdminTaskModal(a)} style={{...iconBtn,fontSize:15}}>✎</button>
                 <button onClick={async()=>{await withUndo(async()=>{
                   await supabase.from('admin_tasks').delete().eq('id',a.id)
                   const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
@@ -1326,6 +1334,36 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
   )
 }
 
+// ── Role definitions with category ───────────────────────────────────
+const PREDEFINED_ROLES = [
+  { title:'Section Manager',    cat:'other' },
+  { title:'Section Leader',     cat:'other' },
+  { title:'Senior Team Leader', cat:'3d' },
+  { title:'Team Leader',        cat:'3d' },
+  { title:'Junior Team Leader', cat:'3d' },
+  { title:'Senior Checker',     cat:'2d' },
+  { title:'Checker',            cat:'2d' },
+  { title:'Junior Checker',     cat:'2d' },
+  { title:'Senior Modeler',     cat:'3d' },
+  { title:'Modeler',            cat:'3d' },
+  { title:'Junior Modeler',     cat:'3d' },
+  { title:'Senior Editor',      cat:'2d' },
+  { title:'Editor',             cat:'2d' },
+  { title:'Junior Editor',      cat:'2d' },
+  { title:'Admin Assistant',    cat:'other' },
+  { title:'Cadet',              cat:'other' },
+]
+
+const CAT_COLORS = {
+  '3d':    { bg:'rgba(46,125,209,.18)',  border:'#2e7dd1', text:'#2e7dd1',  label:'3D' },
+  '2d':    { bg:'rgba(60,184,122,.18)',  border:'#3cb87a', text:'#3cb87a',  label:'2D' },
+  'other': { bg:'rgba(150,130,80,.18)',  border:'#b8922a', text:'#b8922a',  label:'Other' },
+}
+
+function getRoleCat(roleTitle) {
+  return PREDEFINED_ROLES.find(r=>r.title===roleTitle)?.cat || 'other'
+}
+
 // ════════════════════════════════════════════════════════════════════
 // TEAM TAB
 // ════════════════════════════════════════════════════════════════════
@@ -1337,7 +1375,9 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
     const bv=(b[sort.col]||'').toString().toLowerCase()
     return av<bv?-sort.dir:av>bv?sort.dir:0
   })
-  const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:T.textSecondary,fontWeight:500,borderBottom:`1px solid ${T.border}`,background:T.surfaceSecond,cursor:'pointer',userSelect:'none'}
+  const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:T.textSecondary,
+    fontWeight:500,borderBottom:`1px solid ${T.border}`,background:T.surfaceSecond,
+    cursor:'pointer',userSelect:'none'}
   const adminTd={padding:'8px 14px',verticalAlign:'middle',color:T.textPrimary}
   const iconBtn={background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 6px',fontSize:13}
   const SH=({col,ch,width})=>(
@@ -1346,37 +1386,92 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
     </th>
   )
   return(
-    <div style={{maxWidth:700}}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start',maxWidth:1000}}>
+      {/* Team members table */}
       <AdminSection title="Team Members" onAdd={()=>setMemberModal({})} T={T}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}><thead><tr>
-          <SH col="name" ch="Name" width="200px" />
+          <SH col="name" ch="Name" width="180px" />
           <SH col="role" ch="Role" width="180px" />
-          <SH col="office" ch="Office" width="160px" />
-          <th style={{...adminTh,width:90}}>Actions</th>
+          <th style={{...adminTh,width:60}}>Cat</th>
+          <SH col="office" ch="Office" width="140px" />
+          <th style={{...adminTh,width:80}}>Actions</th>
         </tr></thead><tbody>
-          {sorted.map(m=>(
-            <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
-              <td style={adminTd}><strong>{m.name}</strong></td>
-              <td style={{...adminTd,color:T.textSecondary}}>{m.role}</td>
-              <td style={adminTd}>
-                <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
-                  borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
-                  color:getOfficeColor(m.office)}}>
-                  {m.office} <OfficeFlag office={m.office} size={12} />
-                </span>
-              </td>
-              <td style={adminTd}>
-                <button onClick={()=>setMemberModal(m)} style={iconBtn}>edit</button>
-                <button onClick={async()=>{await withUndo(async()=>{
-                  await supabase.from('team_members').delete().eq('id',m.id)
-                  const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
-                  setTeamMembers(r.data||[])
-                })}} style={{...iconBtn,color:T.red}}>x</button>
-              </td>
-            </tr>
-          ))}
+          {sorted.map(m=>{
+            const cat=getRoleCat(m.role)
+            const cc=CAT_COLORS[cat]
+            return(
+              <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                <td style={{...adminTd,background:cc.bg}}>
+                  <strong style={{color:T.textPrimary}}>{m.name}</strong>
+                </td>
+                <td style={{...adminTd,color:T.textSecondary,background:cc.bg}}>{m.role}</td>
+                <td style={{...adminTd,background:cc.bg}}>
+                  <span style={{display:'inline-block',padding:'1px 7px',borderRadius:8,fontSize:10,
+                    border:`1px solid ${cc.border}`,color:cc.text,background:'transparent',
+                    whiteSpace:'nowrap'}}>
+                    {cc.label}
+                  </span>
+                </td>
+                <td style={adminTd}>
+                  <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
+                    borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
+                    color:getOfficeColor(m.office)}}>
+                    {m.office} <OfficeFlag office={m.office} size={12} />
+                  </span>
+                </td>
+                <td style={adminTd}>
+                  <button onClick={()=>setMemberModal(m)} style={{...iconBtn,fontSize:15}}>✎</button>
+                  <button onClick={async()=>{await withUndo(async()=>{
+                    await supabase.from('team_members').delete().eq('id',m.id)
+                    const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
+                    setTeamMembers(r.data||[])
+                  })}} style={{...iconBtn,color:T.red}}>✕</button>
+                </td>
+              </tr>
+            )
+          })}
         </tbody></table>
       </AdminSection>
+
+      {/* Roles reference table */}
+      <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,
+        overflow:'hidden',minWidth:240,flexShrink:0}}>
+        <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`}}>
+          <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>Roles</div>
+        </div>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+          <thead><tr>
+            <th style={{...adminTh,padding:'6px 12px',width:28}}>#</th>
+            <th style={{...adminTh,padding:'6px 12px'}}>Designation</th>
+            <th style={{...adminTh,padding:'6px 12px',width:60}}>Cat</th>
+          </tr></thead>
+          <tbody>
+            {PREDEFINED_ROLES.map((r,i)=>{
+              const cc=CAT_COLORS[r.cat]
+              return(
+                <tr key={r.title} style={{borderBottom:`1px solid ${T.borderLight}`,
+                  background:cc.bg}}>
+                  <td style={{padding:'5px 12px',color:T.textMuted,textAlign:'center'}}>{i+1}</td>
+                  <td style={{padding:'5px 12px',color:T.textPrimary}}>{r.title}</td>
+                  <td style={{padding:'5px 12px'}}>
+                    <span style={{padding:'1px 6px',borderRadius:8,fontSize:9,
+                      border:`1px solid ${cc.border}`,color:cc.text}}>{cc.label}</span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {/* Legend */}
+        <div style={{padding:'10px 12px',borderTop:`1px solid ${T.border}`,display:'flex',gap:10,flexWrap:'wrap'}}>
+          {Object.entries(CAT_COLORS).map(([k,v])=>(
+            <span key={k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:T.textSecondary}}>
+              <span style={{width:10,height:10,borderRadius:2,background:v.bg,border:`1px solid ${v.border}`,display:'inline-block'}} />
+              {v.label}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1550,13 +1645,29 @@ function MemberModal({item,onClose,onSave,teamMembers,T}){
   const [customOffice,setCustomOffice]=useState('')
   const known=['Brisbane','Chennai','Bangkok']
   const custom=[...new Set((teamMembers||[]).map(m=>m.office).filter(o=>!known.includes(o)))]
+  const cat = getRoleCat(role)
+  const cc = CAT_COLORS[cat]
   return(
     <Modal open onClose={onClose} T={T}>
       <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Member':'Add Member'}</h3>
       <label style={I.label}>Name</label>
       <input value={name} onChange={e=>setName(e.target.value)} placeholder="Full name" style={I.base} />
       <label style={I.label}>Role</label>
-      <input value={role} onChange={e=>setRole(e.target.value)} placeholder="e.g. 3D Modeller" style={I.base} />
+      <select value={role} onChange={e=>setRole(e.target.value)} style={I.base}>
+        <option value="">— select role —</option>
+        {PREDEFINED_ROLES.map(r=>(
+          <option key={r.title} value={r.title}>{r.title}</option>
+        ))}
+      </select>
+      {role&&(
+        <div style={{marginTop:6,display:'flex',alignItems:'center',gap:8}}>
+          <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,
+            border:`1px solid ${cc.border}`,color:cc.text,background:cc.bg}}>
+            {cc.label}
+          </span>
+          <span style={{fontSize:11,color:T.textSecondary}}>category</span>
+        </div>
+      )}
       <label style={I.label}>Office</label>
       <select value={office} onChange={e=>setOffice(e.target.value)} style={I.base}>
         {[...known,...custom].map(o=><option key={o}>{o}</option>)}
