@@ -232,7 +232,7 @@ function makeBtnBase(T) {
 
 // ── Full DB snapshot for undo/redo ─────────────────────────────────────
 async function takeSnapshot() {
-  const [ta,ul,ph,pr,at,tm,ro] = await Promise.all([
+  const [ta,ul,ph,pr,at,tm,ro,rc] = await Promise.all([
     supabase.from('task_assignments').select('*'),
     supabase.from('upcoming_leave').select('*'),
     supabase.from('public_holidays').select('*'),
@@ -240,15 +240,16 @@ async function takeSnapshot() {
     supabase.from('admin_tasks').select('*'),
     supabase.from('team_members').select('*'),
     supabase.from('roles').select('*'),
+    supabase.from('role_categories').select('*'),
   ])
   return { assignments:ta.data||[], leave:ul.data||[], ph:ph.data||[],
     projects:pr.data||[], adminTasks:at.data||[], teamMembers:tm.data||[],
-    roles:ro.data||[] }
+    roles:ro.data||[], categories:rc.data||[] }
 }
 
 async function restoreSnapshot(snap, setters) {
   const { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
-    setProjects,setAdminTasks,setTeamMembers,setRoles } = setters
+    setProjects,setAdminTasks,setTeamMembers,setRoles,setCategories } = setters
   await supabase.from('task_assignments').delete().neq('id','00000000-0000-0000-0000-000000000000')
   if(snap.assignments.length>0) await supabase.from('task_assignments').insert(
     snap.assignments.map(a=>({...a,updated_at:new Date().toISOString()})))
@@ -264,7 +265,9 @@ async function restoreSnapshot(snap, setters) {
   if(snap.teamMembers.length>0) await supabase.from('team_members').insert(snap.teamMembers)
   await supabase.from('roles').delete().neq('id','_none_')
   if(snap.roles?.length>0) await supabase.from('roles').insert(snap.roles)
-  const [ta,ul,ph,pr,at,tm,ro] = await Promise.all([
+  await supabase.from('role_categories').delete().neq('id','_none_')
+  if(snap.categories?.length>0) await supabase.from('role_categories').insert(snap.categories)
+  const [ta,ul,ph,pr,at,tm,ro,rc] = await Promise.all([
     supabase.from('task_assignments').select('*'),
     supabase.from('upcoming_leave').select('*'),
     supabase.from('public_holidays').select('*').order('iso_date'),
@@ -272,11 +275,13 @@ async function restoreSnapshot(snap, setters) {
     supabase.from('admin_tasks').select('*').order('name'),
     supabase.from('team_members').select('*').order('office').order('sort_order'),
     supabase.from('roles').select('*').order('sort_order'),
+    supabase.from('role_categories').select('*').order('sort_order'),
   ])
   setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[])
   setPublicHolidayRows(ph.data||[]); setProjects(pr.data||[])
   setAdminTasks(at.data||[]); setTeamMembers(tm.data||[])
   if(setRoles) setRoles(ro.data||[])
+  if(setCategories) setCategories(rc.data||[])
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -299,6 +304,7 @@ export default function App() {
   const [projects, setProjects] = useState([])
   const [adminTasks, setAdminTasks] = useState([])
   const [roles, setRoles] = useState([])
+  const [categories, setCategories] = useState([])
   const [assignments, setAssignments] = useState([])
   const [upcomingLeaveRows, setUpcomingLeaveRows] = useState([])
   const [publicHolidayRows, setPublicHolidayRows] = useState([])
@@ -322,6 +328,7 @@ export default function App() {
   const [adminTaskModal, setAdminTaskModal] = useState(null)
   const [memberModal, setMemberModal] = useState(null)
   const [roleModal, setRoleModal] = useState(null)
+  const [categoryModal, setCategoryModal] = useState(null)
   const [leaveModal, setLeaveModal] = useState(null)
   const [phModal, setPhModal] = useState(null)
 
@@ -335,7 +342,7 @@ export default function App() {
 
   const showToast = useCallback(msg=>setToast(msg),[])
   const setters = {setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
-    setProjects,setAdminTasks,setTeamMembers,setRoles}
+    setProjects,setAdminTasks,setTeamMembers,setRoles,setCategories}
 
   const reloadAssignments = useCallback(async()=>{
     const r=await supabase.from('task_assignments').select('*')
@@ -345,7 +352,7 @@ export default function App() {
   useEffect(()=>{
     async function loadAll() {
       setLoading(true)
-      const [tm,pr,at,ta,ul,ph,ro] = await Promise.all([
+      const [tm,pr,at,ta,ul,ph,ro,rc] = await Promise.all([
         supabase.from('team_members').select('*').order('office').order('sort_order'),
         supabase.from('projects').select('*').order('job'),
         supabase.from('admin_tasks').select('*').order('name'),
@@ -353,10 +360,11 @@ export default function App() {
         supabase.from('upcoming_leave').select('*'),
         supabase.from('public_holidays').select('*').order('iso_date'),
         supabase.from('roles').select('*').order('sort_order'),
+        supabase.from('role_categories').select('*').order('sort_order'),
       ])
       setTeamMembers(tm.data||[]); setProjects(pr.data||[]); setAdminTasks(at.data||[])
       setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[]); setPublicHolidayRows(ph.data||[])
-      setRoles(ro.data||[])
+      setRoles(ro.data||[]); setCategories(rc.data||[])
       setLoading(false)
     }
     loadAll()
@@ -382,6 +390,8 @@ export default function App() {
         ()=>supabase.from('public_holidays').select('*').order('iso_date').then(r=>setPublicHolidayRows(r.data||[]))).subscribe(),
       supabase.channel('rt-roles').on('postgres_changes',{event:'*',schema:'public',table:'roles'},
         ()=>supabase.from('roles').select('*').order('sort_order').then(r=>setRoles(r.data||[]))).subscribe(),
+      supabase.channel('rt-cats').on('postgres_changes',{event:'*',schema:'public',table:'role_categories'},
+        ()=>supabase.from('role_categories').select('*').order('sort_order').then(r=>setCategories(r.data||[]))).subscribe(),
     ]
     return ()=>channels.forEach(c=>supabase.removeChannel(c))
   },[reloadAssignments])
@@ -729,7 +739,7 @@ export default function App() {
             weekStart={weekStart} setWeekStart={setWeekStart}
             gridWeeks={gridWeeks} setGridWeeks={setGridWeeks}
             teamMembers={teamMembers} projects={projects} adminTasks={adminTasks}
-            roles={roles}
+            roles={roles} categories={categories}
             tasks={tasks} upcomingLeave={upcomingLeave} upcomingPH={upcomingPH}
             upcomingLeaveRows={upcomingLeaveRows} setUpcomingLeaveRows={setUpcomingLeaveRows}
             publicHolidayRows={publicHolidayRows} setPublicHolidayRows={setPublicHolidayRows}
@@ -763,7 +773,9 @@ export default function App() {
         {tab==='team'&&(
           <TeamTab teamMembers={teamMembers} setTeamMembers={setTeamMembers}
             roles={roles} setRoles={setRoles}
+            categories={categories} setCategories={setCategories}
             setMemberModal={setMemberModal} setRoleModal={setRoleModal}
+            setCategoryModal={setCategoryModal}
             withUndo={withUndo} T={T} />
         )}
       </div>
@@ -790,7 +802,7 @@ export default function App() {
             const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
           }); setAdminTaskModal(null)
         }} />}
-      {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers} roles={roles}
+      {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers} roles={roles} categories={categories}
         onClose={()=>setMemberModal(null)} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
@@ -799,7 +811,7 @@ export default function App() {
             const r=await supabase.from('team_members').select('*').order('office').order('sort_order'); setTeamMembers(r.data||[])
           }); setMemberModal(null)
         }} />}
-      {roleModal!==null&&<RoleModal item={roleModal} roles={roles}
+      {roleModal!==null&&<RoleModal item={roleModal} roles={roles} categories={categories}
         onClose={()=>setRoleModal(null)} T={T} showToast={showToast}
         onSave={async row=>{
           await withUndo(async()=>{
@@ -807,6 +819,15 @@ export default function App() {
             else await supabase.from('roles').insert({...row,id:row.id||'r'+Date.now()})
             const r=await supabase.from('roles').select('*').order('sort_order'); setRoles(r.data||[])
           }); setRoleModal(null)
+        }} />}
+      {categoryModal!==null&&<CategoryModal item={categoryModal} categories={categories}
+        onClose={()=>setCategoryModal(null)} T={T} showToast={showToast}
+        onSave={async row=>{
+          await withUndo(async()=>{
+            if(row.id&&categories.find(x=>x.id===row.id)) await supabase.from('role_categories').update(row).eq('id',row.id)
+            else await supabase.from('role_categories').insert({...row,id:row.id||'cat'+Date.now()})
+            const r=await supabase.from('role_categories').select('*').order('sort_order'); setCategories(r.data||[])
+          }); setCategoryModal(null)
         }} />}
       {leaveModal!==null&&<LeaveModal item={leaveModal} teamMembers={teamMembers}
         onClose={()=>setLeaveModal(null)} showToast={showToast} T={T}
@@ -833,7 +854,7 @@ export default function App() {
 // WORKLOAD TAB
 // ════════════════════════════════════════════════════════════════════
 function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
-  gridWeeks,setGridWeeks,teamMembers,projects,adminTasks,roles,tasks,upcomingLeave,upcomingPH,
+  gridWeeks,setGridWeeks,teamMembers,projects,adminTasks,roles,categories,tasks,upcomingLeave,upcomingPH,
   upcomingLeaveRows,setUpcomingLeaveRows,publicHolidayRows,setPublicHolidayRows,
   officeFilter,setOfficeFilter,projectFilter,setProjectFilter,
   leaveFilter,setLeaveFilter,unassignedFilter,setUnassignedFilter,
@@ -1045,7 +1066,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
                 ...members.map(m=>(
                   <MemberRow key={m.id} member={m}
                     weekSegments={weekSegments} allWorkdays={allWorkdays}
-                    getActive={getActive} projects={projects} adminTasks={adminTasks} roles={roles}
+                    getActive={getActive} projects={projects} adminTasks={adminTasks} roles={roles} categories={categories}
                     setAssignModal={setAssignModal}
                     startResize={startResize} startCopy={startCopy}
                     adjustTaskDate={adjustTaskDate}
@@ -1102,8 +1123,9 @@ function SectionTitle({title,T}){
 }
 
 // ── Member Row ─────────────────────────────────────────────────────────
-function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,roles,
+function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,roles,categories,
   setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop,T,tdStyle}){
+  const catColors=buildCatColors(categories)
   const [hovered,setHovered]=useState(false)
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
   const allWorkDays=allWorkdays
@@ -1212,7 +1234,7 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
         padding:'6px 8px 6px 12px',verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
         {(()=>{
           const cat=getRoleCat(member.role, roles)
-          const cc=CAT_COLORS[cat]
+          const cc=catColors[cat]||catColors[Object.keys(catColors)[0]]
           return(
             <div style={{display:'flex',alignItems:'center',gap:6,
               background:cc.bg,borderLeft:`3px solid ${cc.border}`,
@@ -1379,41 +1401,84 @@ const PREDEFINED_ROLES = [
   { id:'r16', title:'Cadet',              cat:'other', sort_order:16 },
 ]
 
-const CAT_COLORS = {
-  '3d':    { bg:'rgba(46,125,209,.18)',  border:'#2e7dd1', text:'#2e7dd1', label:'3D' },
-  '2d':    { bg:'rgba(60,184,122,.18)',  border:'#3cb87a', text:'#3cb87a', label:'2D' },
-  'other': { bg:'rgba(150,130,80,.18)', border:'#b8922a', text:'#b8922a', label:'Other' },
+// ── Default category seeds (fallback when DB not yet loaded) ──────────
+const DEFAULT_CATEGORIES = [
+  { id:'3d',    label:'3D',    color:'#2e7dd1', sort_order:1 },
+  { id:'2d',    label:'2D',    color:'#3cb87a', sort_order:2 },
+  { id:'admin', label:'Admin', color:'#b8922a', sort_order:3 },
+]
+
+// Build colour map from live categories (or defaults)
+function buildCatColors(liveCategories) {
+  const cats = (liveCategories&&liveCategories.length>0) ? liveCategories : DEFAULT_CATEGORIES
+  const map = {}
+  cats.forEach(c => {
+    const h = c.color.replace('#','')
+    const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16)
+    map[c.id] = { bg:`rgba(${r},${g},${b},.18)`, border:c.color, text:c.color, label:c.label, color:c.color }
+  })
+  return map
+}
+
+function nextAutoCatColor(existingCategories) {
+  const hues = [210,35,160,0,270,190,60,310,100,20,240,330,80,170,50]
+  const hue = hues[(existingCategories?.length||0) % hues.length]
+  const h=hue/360,s=0.65,l=0.55
+  const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q
+  const hr=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<0.5)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p}
+  const r=Math.round(hr(p,q,h+1/3)*255),g=Math.round(hr(p,q,h)*255),b=Math.round(hr(p,q,h-1/3)*255)
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('')
 }
 
 // Accepts live roles from DB, falls back to built-in list
 function getRoleCat(roleTitle, liveRoles) {
   const list = (liveRoles&&liveRoles.length>0) ? liveRoles : PREDEFINED_ROLES
-  return list.find(r=>r.title===roleTitle)?.cat || 'other'
+  return list.find(r=>r.title===roleTitle)?.cat || 'admin'
 }
 
 // ════════════════════════════════════════════════════════════════════
 // TEAM TAB
 // ════════════════════════════════════════════════════════════════════
-function TeamTab({teamMembers,setTeamMembers,roles,setRoles,setMemberModal,setRoleModal,withUndo,T}){
+function TeamTab({teamMembers,setTeamMembers,roles,setRoles,categories,setCategories,
+  setMemberModal,setRoleModal,setCategoryModal,withUndo,T}){
+  const catColors = buildCatColors(categories)
   const [sort,setSort]=useState({col:'office',dir:1})
+  const [roleSort,setRoleSort]=useState({col:'sort_order',dir:1})
   function toggle(col){ setSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
+  function toggleRole(col){ setRoleSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
+
   const sorted=[...teamMembers].sort((a,b)=>{
     const av=(a[sort.col]||'').toString().toLowerCase()
     const bv=(b[sort.col]||'').toString().toLowerCase()
     return av<bv?-sort.dir:av>bv?sort.dir:0
   })
+
+  const liveRoles = roles.length>0 ? roles : PREDEFINED_ROLES
+  const liveCats = categories.length>0 ? categories : DEFAULT_CATEGORIES
+
+  const sortedRoles=[...liveRoles].sort((a,b)=>{
+    const col=roleSort.col
+    const av=(col==='sort_order'?String(a[col]||99):(a[col]||'')).toLowerCase()
+    const bv=(col==='sort_order'?String(b[col]||99):(b[col]||'')).toLowerCase()
+    return av<bv?-roleSort.dir:av>bv?roleSort.dir:0
+  })
+
   const adminTh={textAlign:'left',padding:'8px 14px',fontSize:10,color:T.textSecondary,
     fontWeight:500,borderBottom:`1px solid ${T.border}`,background:T.surfaceSecond,
     cursor:'pointer',userSelect:'none'}
   const adminTd={padding:'8px 14px',verticalAlign:'middle',color:T.textPrimary}
   const iconBtn={background:'none',border:'none',cursor:'pointer',color:T.textSecondary,padding:'2px 6px',fontSize:13}
-  const SH=({col,ch,width})=>(
-    <th style={{...adminTh,width:width||'auto'}} onClick={()=>toggle(col)}>
-      {ch}{sort.col===col?(sort.dir===1?' ^':' v'):''}
+
+  const SH=({col,onToggle,ch,width})=>(
+    <th style={{...adminTh,width:width||'auto'}} onClick={()=>onToggle(col)}>
+      {ch}{sort.col===col?(sort.dir===1?' ↑':' ↓'):''}
     </th>
   )
-
-  const liveRoles = roles.length>0 ? roles : PREDEFINED_ROLES
+  const RSH=({col,ch,width})=>(
+    <th style={{...adminTh,padding:'6px 12px',width:width||'auto'}} onClick={()=>toggleRole(col)}>
+      {ch}{roleSort.col===col?(roleSort.dir===1?' ↑':' ↓'):''}
+    </th>
+  )
 
   async function deleteRole(id) {
     await withUndo(async()=>{
@@ -1422,102 +1487,149 @@ function TeamTab({teamMembers,setTeamMembers,roles,setRoles,setMemberModal,setRo
       setRoles(r.data||[])
     })
   }
+  async function deleteCategory(id) {
+    await withUndo(async()=>{
+      await supabase.from('role_categories').delete().eq('id',id)
+      const r=await supabase.from('role_categories').select('*').order('sort_order')
+      setCategories(r.data||[])
+    })
+  }
 
   return(
-    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start',maxWidth:1100}}>
-      {/* Team members table */}
-      <AdminSection title="Team Members" onAdd={()=>setMemberModal({})} T={T}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}><thead><tr>
-          <SH col="name" ch="Name" width="180px" />
-          <SH col="role" ch="Role" width="180px" />
-          <th style={{...adminTh,width:60}}>Cat</th>
-          <SH col="office" ch="Office" width="140px" />
-          <th style={{...adminTh,width:80}}>Actions</th>
-        </tr></thead><tbody>
-          {sorted.map(m=>{
-            const cat=getRoleCat(m.role, liveRoles)
-            const cc=CAT_COLORS[cat]
-            return(
-              <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
-                <td style={{...adminTd,background:cc.bg}}>
-                  <strong style={{color:T.textPrimary}}>{m.name}</strong>
-                </td>
-                <td style={{...adminTd,color:T.textSecondary,background:cc.bg}}>{m.role}</td>
-                <td style={{...adminTd,background:cc.bg}}>
-                  <span style={{display:'inline-block',padding:'1px 7px',borderRadius:8,fontSize:10,
-                    border:`1px solid ${cc.border}`,color:cc.text,background:'transparent',whiteSpace:'nowrap'}}>
-                    {cc.label}
-                  </span>
-                </td>
-                <td style={adminTd}>
-                  <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
-                    borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
-                    color:getOfficeColor(m.office)}}>
-                    {m.office} <OfficeFlag office={m.office} size={12} />
-                  </span>
-                </td>
-                <td style={adminTd}>
-                  <button onClick={()=>setMemberModal(m)} style={{...iconBtn,fontSize:15}}>✎</button>
-                  <button onClick={async()=>{await withUndo(async()=>{
-                    await supabase.from('team_members').delete().eq('id',m.id)
-                    const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
-                    setTeamMembers(r.data||[])
-                  })}} style={{...iconBtn,color:T.red}}>✕</button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody></table>
-      </AdminSection>
+    <div style={{display:'flex',flexDirection:'column',gap:20,maxWidth:1100}}>
+      {/* Row 1: Team Members + Roles side by side */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start'}}>
 
-      {/* Roles table — editable */}
-      <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,
-        overflow:'hidden',minWidth:280,flexShrink:0}}>
-        <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`,
-          display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>Roles</div>
-          <button onClick={()=>setRoleModal({})}
-            style={{background:T.blue,border:'none',color:'#fff',
-              padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>+ Add</button>
-        </div>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-          <thead><tr>
-            <th style={{...adminTh,padding:'6px 12px',width:28}}>#</th>
-            <th style={{...adminTh,padding:'6px 12px'}}>Designation</th>
-            <th style={{...adminTh,padding:'6px 12px',width:60}}>Cat</th>
-            <th style={{...adminTh,padding:'6px 12px',width:64}}>Actions</th>
-          </tr></thead>
-          <tbody>
-            {liveRoles.map((r,i)=>{
-              const cc=CAT_COLORS[r.cat]||CAT_COLORS.other
+        {/* Team members table */}
+        <AdminSection title="Team Members" onAdd={()=>setMemberModal({})} T={T}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}><thead><tr>
+            <SH col="name" onToggle={toggle} ch="Name" width="180px" />
+            <SH col="role" onToggle={toggle} ch="Role" width="180px" />
+            <th style={{...adminTh,width:60}}>Cat</th>
+            <SH col="office" onToggle={toggle} ch="Office" width="140px" />
+            <th style={{...adminTh,width:80}}>Actions</th>
+          </tr></thead><tbody>
+            {sorted.map(m=>{
+              const cat=getRoleCat(m.role, liveRoles)
+              const cc=catColors[cat]||catColors[Object.keys(catColors)[0]]||{bg:'transparent',border:'#888',text:'#888',label:'?'}
               return(
-                <tr key={r.id} style={{borderBottom:`1px solid ${T.borderLight}`,background:cc.bg}}>
-                  <td style={{padding:'5px 12px',color:T.textMuted,textAlign:'center'}}>{i+1}</td>
-                  <td style={{padding:'5px 12px',color:T.textPrimary}}>{r.title}</td>
-                  <td style={{padding:'5px 12px'}}>
-                    <span style={{padding:'1px 6px',borderRadius:8,fontSize:9,
-                      border:`1px solid ${cc.border}`,color:cc.text}}>{cc.label}</span>
+                <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
+                  <td style={{...adminTd,background:cc.bg}}>
+                    <strong style={{color:T.textPrimary}}>{m.name}</strong>
                   </td>
-                  <td style={{padding:'4px 8px'}}>
-                    <button onClick={()=>setRoleModal(r)}
-                      style={{...iconBtn,padding:'2px 4px',fontSize:14}}>✎</button>
-                    <button onClick={()=>deleteRole(r.id)}
-                      style={{...iconBtn,padding:'2px 4px',color:T.red}}>✕</button>
+                  <td style={{...adminTd,color:T.textSecondary,background:cc.bg}}>{m.role}</td>
+                  <td style={{...adminTd,background:cc.bg}}>
+                    <span style={{display:'inline-block',padding:'1px 7px',borderRadius:8,fontSize:10,
+                      border:`1px solid ${cc.border}`,color:cc.text,background:'transparent',whiteSpace:'nowrap'}}>
+                      {cc.label}
+                    </span>
+                  </td>
+                  <td style={adminTd}>
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 10px',
+                      borderRadius:10,fontSize:11,border:`1px solid ${getOfficeColor(m.office)}`,
+                      color:getOfficeColor(m.office)}}>
+                      {m.office} <OfficeFlag office={m.office} size={12} />
+                    </span>
+                  </td>
+                  <td style={adminTd}>
+                    <button onClick={()=>setMemberModal(m)} style={{...iconBtn,fontSize:15}}>✎</button>
+                    <button onClick={async()=>{await withUndo(async()=>{
+                      await supabase.from('team_members').delete().eq('id',m.id)
+                      const r=await supabase.from('team_members').select('*').order('office').order('sort_order')
+                      setTeamMembers(r.data||[])
+                    })}} style={{...iconBtn,color:T.red}}>✕</button>
                   </td>
                 </tr>
               )
             })}
-          </tbody>
-        </table>
-        {/* Legend */}
-        <div style={{padding:'10px 12px',borderTop:`1px solid ${T.border}`,display:'flex',gap:12,flexWrap:'wrap'}}>
-          {Object.entries(CAT_COLORS).map(([k,v])=>(
-            <span key={k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:T.textSecondary}}>
-              <span style={{width:10,height:10,borderRadius:2,background:v.bg,
-                border:`1px solid ${v.border}`,display:'inline-block'}} />
-              {v.label}
-            </span>
-          ))}
+          </tbody></table>
+        </AdminSection>
+
+        {/* Roles table — editable, sortable */}
+        <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,
+          overflow:'hidden',minWidth:300,flexShrink:0}}>
+          <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`,
+            display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>Roles</div>
+            <button onClick={()=>setRoleModal({})}
+              style={{background:T.blue,border:'none',color:'#fff',
+                padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>+ Add</button>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+            <thead><tr>
+              <RSH col="sort_order" ch="#" width="32px" />
+              <RSH col="title" ch="Designation" />
+              <RSH col="cat" ch="Cat" width="68px" />
+              <th style={{...adminTh,padding:'6px 12px',width:64}}>Actions</th>
+            </tr></thead>
+            <tbody>
+              {sortedRoles.map((r,i)=>{
+                const cc=catColors[r.cat]||{bg:'transparent',border:'#888',text:'#888',label:r.cat}
+                return(
+                  <tr key={r.id} style={{borderBottom:`1px solid ${T.borderLight}`,background:cc.bg}}>
+                    <td style={{padding:'5px 12px',color:T.textMuted,textAlign:'center'}}>{i+1}</td>
+                    <td style={{padding:'5px 12px',color:T.textPrimary}}>{r.title}</td>
+                    <td style={{padding:'5px 12px'}}>
+                      <span style={{padding:'1px 6px',borderRadius:8,fontSize:9,
+                        border:`1px solid ${cc.border}`,color:cc.text}}>{cc.label}</span>
+                    </td>
+                    <td style={{padding:'4px 8px'}}>
+                      <button onClick={()=>setRoleModal(r)} style={{...iconBtn,padding:'2px 4px',fontSize:14}}>✎</button>
+                      <button onClick={()=>deleteRole(r.id)} style={{...iconBtn,padding:'2px 4px',color:T.red}}>✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Row 2: Categories table */}
+      <div style={{maxWidth:480}}>
+        <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,overflow:'hidden'}}>
+          <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`,
+            display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>Categories</div>
+            <button onClick={()=>setCategoryModal({})}
+              style={{background:T.blue,border:'none',color:'#fff',
+                padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>+ Add</button>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+            <thead><tr>
+              <th style={{...adminTh,padding:'6px 14px',width:32}}>#</th>
+              <th style={{...adminTh,padding:'6px 14px'}}>Label</th>
+              <th style={{...adminTh,padding:'6px 14px',width:80}}>Colour</th>
+              <th style={{...adminTh,padding:'6px 14px',width:80}}>Preview</th>
+              <th style={{...adminTh,padding:'6px 14px',width:72}}>Actions</th>
+            </tr></thead>
+            <tbody>
+              {liveCats.map((c,i)=>{
+                const cc=catColors[c.id]||{bg:'transparent',border:c.color,text:c.color,label:c.label}
+                return(
+                  <tr key={c.id} style={{borderBottom:`1px solid ${T.borderLight}`}}>
+                    <td style={{padding:'6px 14px',color:T.textMuted,textAlign:'center'}}>{i+1}</td>
+                    <td style={{padding:'6px 14px',color:T.textPrimary,fontWeight:500}}>{c.label}</td>
+                    <td style={{padding:'6px 14px'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <span style={{width:14,height:14,borderRadius:3,background:c.color,
+                          border:`1px solid ${T.border}`,display:'inline-block',flexShrink:0}} />
+                        <span style={{fontSize:10,color:T.textMuted,fontFamily:'DM Mono,monospace'}}>{c.color}</span>
+                      </div>
+                    </td>
+                    <td style={{padding:'6px 14px'}}>
+                      <span style={{display:'inline-block',padding:'2px 8px',borderRadius:8,fontSize:10,
+                        background:cc.bg,border:`1px solid ${cc.border}`,color:cc.text}}>{c.label}</span>
+                    </td>
+                    <td style={{padding:'4px 8px'}}>
+                      <button onClick={()=>setCategoryModal(c)} style={{...iconBtn,padding:'2px 4px',fontSize:14}}>✎</button>
+                      <button onClick={()=>deleteCategory(c.id)} style={{...iconBtn,padding:'2px 4px',color:T.red}}>✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1685,7 +1797,7 @@ function AdminTaskModal({item,onClose,onSave,projects,adminTasks,T}){
   )
 }
 
-function MemberModal({item,onClose,onSave,teamMembers,roles,T}){
+function MemberModal({item,onClose,onSave,teamMembers,roles,categories,T}){
   const I=makeI(T); const btnBase=makeBtnBase(T)
   const [name,setName]=useState(item?.name||'')
   const [role,setRole]=useState(item?.role||'')
@@ -1694,8 +1806,9 @@ function MemberModal({item,onClose,onSave,teamMembers,roles,T}){
   const known=['Brisbane','Chennai','Bangkok']
   const custom=[...new Set((teamMembers||[]).map(m=>m.office).filter(o=>!known.includes(o)))]
   const liveRoles = roles&&roles.length>0 ? roles : PREDEFINED_ROLES
+  const catColors = buildCatColors(categories)
   const cat = getRoleCat(role, liveRoles)
-  const cc = CAT_COLORS[cat]||CAT_COLORS.other
+  const cc = catColors[cat]||catColors[Object.keys(catColors)[0]]||{bg:'transparent',border:T.border,text:T.textSecondary,label:'?'}
   return(
     <Modal open onClose={onClose} T={T}>
       <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Member':'Add Member'}</h3>
@@ -1821,14 +1934,16 @@ function PHModal({item,onClose,onSave,showToast,T}){
 // ════════════════════════════════════════════════════════════════════
 // ROLE MODAL
 // ════════════════════════════════════════════════════════════════════
-function RoleModal({item,onClose,onSave,roles,showToast,T}){
+function RoleModal({item,onClose,onSave,roles,categories,showToast,T}){
   const I=makeI(T); const btnBase=makeBtnBase(T)
   const isNew=!item?.id
   const maxOrder=roles&&roles.length>0?Math.max(...roles.map(r=>r.sort_order||0))+1:1
   const [title,setTitle]=useState(item?.title||'')
   const [cat,setCat]=useState(item?.cat||'3d')
   const [sortOrder,setSortOrder]=useState(item?.sort_order||maxOrder)
-  const cc=CAT_COLORS[cat]||CAT_COLORS.other
+  const catColors=buildCatColors(categories)
+  const liveCats=categories&&categories.length>0?categories:DEFAULT_CATEGORIES
+  const cc=catColors[cat]||catColors[Object.keys(catColors)[0]]||{bg:'transparent',border:T.border,text:T.textSecondary,label:'?'}
   return(
     <Modal open onClose={onClose} T={T}>
       <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>
@@ -1839,16 +1954,17 @@ function RoleModal({item,onClose,onSave,roles,showToast,T}){
         placeholder="e.g. Senior Modeler" style={I.base} />
       <label style={I.label}>Category</label>
       <div style={{display:'flex',gap:8,marginTop:6}}>
-        {Object.entries(CAT_COLORS).map(([k,v])=>(
-          <button key={k} onClick={()=>setCat(k)}
+        {liveCats.map(c=>{
+          const cv=catColors[c.id]||{bg:'transparent',border:c.color,text:c.color,label:c.label}
+          return(<button key={c.id} onClick={()=>setCat(c.id)}
             style={{flex:1,padding:'8px',borderRadius:6,cursor:'pointer',fontSize:12,
-              border:`2px solid ${cat===k?v.border:T.border}`,
-              background:cat===k?v.bg:T.surfaceSecond,
-              color:cat===k?v.text:T.textSecondary,
+              border:`2px solid ${cat===c.id?cv.border:T.border}`,
+              background:cat===c.id?cv.bg:T.surfaceSecond,
+              color:cat===c.id?cv.text:T.textSecondary,
               fontFamily:'DM Mono,monospace',transition:'all .15s'}}>
-            {v.label}
-          </button>
-        ))}
+            {cv.label}
+          </button>)
+        })}
       </div>
       <div style={{marginTop:10,padding:'8px 12px',borderRadius:6,background:cc.bg,
         border:`1px solid ${cc.border}`,display:'flex',alignItems:'center',gap:10}}>
@@ -1864,6 +1980,53 @@ function RoleModal({item,onClose,onSave,roles,showToast,T}){
         <button onClick={()=>{
           if(!title.trim()){showToast('Enter a role title');return}
           onSave({...item,title:title.trim(),cat,sort_order:sortOrder})
+        }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
+      </div>
+    </Modal>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CATEGORY MODAL
+// ════════════════════════════════════════════════════════════════════
+function CategoryModal({item,onClose,onSave,categories,showToast,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
+  const isNew=!item?.id
+  const [label,setLabel]=useState(item?.label||'')
+  const [color,setColor]=useState(item?.color||nextAutoCatColor(categories))
+  const [sortOrder,setSortOrder]=useState(item?.sort_order||(categories?.length||0)+1)
+  // Live preview
+  const h=color.replace('#','')
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16)
+  const previewBg=`rgba(${r},${g},${b},.18)`
+  return(
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>
+        {isNew?'Add Category':'Edit Category'}
+      </h3>
+      <label style={I.label}>Label</label>
+      <input value={label} onChange={e=>setLabel(e.target.value)}
+        placeholder="e.g. BIM" style={I.base} />
+      <label style={I.label}>Colour</label>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4}}>
+        <input type="color" value={color} onChange={e=>setColor(e.target.value)}
+          style={{height:36,padding:'2px 4px',width:60,
+            background:T.surfaceSecond,border:`1px solid ${T.border}`,borderRadius:4}} />
+        <span style={{fontSize:11,color:T.textSecondary,fontFamily:'DM Mono,monospace'}}>{color}</span>
+        <span style={{padding:'2px 10px',borderRadius:8,fontSize:11,
+          background:previewBg,border:`1px solid ${color}`,color}}>
+          {label||'Preview'}
+        </span>
+      </div>
+      <label style={I.label}>Sort Order</label>
+      <input type="number" value={sortOrder} onChange={e=>setSortOrder(Number(e.target.value))}
+        min={1} style={{...I.base,width:100}} />
+      <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
+        <button onClick={onClose} style={btnBase}>Cancel</button>
+        <button onClick={()=>{
+          if(!label.trim()){showToast('Enter a category label');return}
+          const id=item?.id||(label.toLowerCase().replace(/[^a-z0-9]/g,'_')||'cat'+Date.now())
+          onSave({...item,id,label:label.trim(),color,sort_order:sortOrder})
         }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
