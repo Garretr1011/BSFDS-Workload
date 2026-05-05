@@ -232,21 +232,23 @@ function makeBtnBase(T) {
 
 // ── Full DB snapshot for undo/redo ─────────────────────────────────────
 async function takeSnapshot() {
-  const [ta,ul,ph,pr,at,tm] = await Promise.all([
+  const [ta,ul,ph,pr,at,tm,ro] = await Promise.all([
     supabase.from('task_assignments').select('*'),
     supabase.from('upcoming_leave').select('*'),
     supabase.from('public_holidays').select('*'),
     supabase.from('projects').select('*'),
     supabase.from('admin_tasks').select('*'),
     supabase.from('team_members').select('*'),
+    supabase.from('roles').select('*'),
   ])
   return { assignments:ta.data||[], leave:ul.data||[], ph:ph.data||[],
-    projects:pr.data||[], adminTasks:at.data||[], teamMembers:tm.data||[] }
+    projects:pr.data||[], adminTasks:at.data||[], teamMembers:tm.data||[],
+    roles:ro.data||[] }
 }
 
 async function restoreSnapshot(snap, setters) {
   const { setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
-    setProjects,setAdminTasks,setTeamMembers } = setters
+    setProjects,setAdminTasks,setTeamMembers,setRoles } = setters
   await supabase.from('task_assignments').delete().neq('id','00000000-0000-0000-0000-000000000000')
   if(snap.assignments.length>0) await supabase.from('task_assignments').insert(
     snap.assignments.map(a=>({...a,updated_at:new Date().toISOString()})))
@@ -260,17 +262,21 @@ async function restoreSnapshot(snap, setters) {
   if(snap.adminTasks.length>0) await supabase.from('admin_tasks').insert(snap.adminTasks)
   await supabase.from('team_members').delete().neq('id','00000000-0000-0000-0000-000000000000')
   if(snap.teamMembers.length>0) await supabase.from('team_members').insert(snap.teamMembers)
-  const [ta,ul,ph,pr,at,tm] = await Promise.all([
+  await supabase.from('roles').delete().neq('id','_none_')
+  if(snap.roles?.length>0) await supabase.from('roles').insert(snap.roles)
+  const [ta,ul,ph,pr,at,tm,ro] = await Promise.all([
     supabase.from('task_assignments').select('*'),
     supabase.from('upcoming_leave').select('*'),
     supabase.from('public_holidays').select('*').order('iso_date'),
     supabase.from('projects').select('*').order('job'),
     supabase.from('admin_tasks').select('*').order('name'),
     supabase.from('team_members').select('*').order('office').order('sort_order'),
+    supabase.from('roles').select('*').order('sort_order'),
   ])
   setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[])
   setPublicHolidayRows(ph.data||[]); setProjects(pr.data||[])
   setAdminTasks(at.data||[]); setTeamMembers(tm.data||[])
+  if(setRoles) setRoles(ro.data||[])
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -292,6 +298,7 @@ export default function App() {
   const [teamMembers, setTeamMembers] = useState([])
   const [projects, setProjects] = useState([])
   const [adminTasks, setAdminTasks] = useState([])
+  const [roles, setRoles] = useState([])
   const [assignments, setAssignments] = useState([])
   const [upcomingLeaveRows, setUpcomingLeaveRows] = useState([])
   const [publicHolidayRows, setPublicHolidayRows] = useState([])
@@ -314,6 +321,7 @@ export default function App() {
   const [projectModal, setProjectModal] = useState(null)
   const [adminTaskModal, setAdminTaskModal] = useState(null)
   const [memberModal, setMemberModal] = useState(null)
+  const [roleModal, setRoleModal] = useState(null)
   const [leaveModal, setLeaveModal] = useState(null)
   const [phModal, setPhModal] = useState(null)
 
@@ -327,7 +335,7 @@ export default function App() {
 
   const showToast = useCallback(msg=>setToast(msg),[])
   const setters = {setAssignments,setUpcomingLeaveRows,setPublicHolidayRows,
-    setProjects,setAdminTasks,setTeamMembers}
+    setProjects,setAdminTasks,setTeamMembers,setRoles}
 
   const reloadAssignments = useCallback(async()=>{
     const r=await supabase.from('task_assignments').select('*')
@@ -337,16 +345,18 @@ export default function App() {
   useEffect(()=>{
     async function loadAll() {
       setLoading(true)
-      const [tm,pr,at,ta,ul,ph] = await Promise.all([
+      const [tm,pr,at,ta,ul,ph,ro] = await Promise.all([
         supabase.from('team_members').select('*').order('office').order('sort_order'),
         supabase.from('projects').select('*').order('job'),
         supabase.from('admin_tasks').select('*').order('name'),
         supabase.from('task_assignments').select('*'),
         supabase.from('upcoming_leave').select('*'),
         supabase.from('public_holidays').select('*').order('iso_date'),
+        supabase.from('roles').select('*').order('sort_order'),
       ])
       setTeamMembers(tm.data||[]); setProjects(pr.data||[]); setAdminTasks(at.data||[])
       setAssignments(ta.data||[]); setUpcomingLeaveRows(ul.data||[]); setPublicHolidayRows(ph.data||[])
+      setRoles(ro.data||[])
       setLoading(false)
     }
     loadAll()
@@ -370,6 +380,8 @@ export default function App() {
         ()=>supabase.from('upcoming_leave').select('*').then(r=>setUpcomingLeaveRows(r.data||[]))).subscribe(),
       supabase.channel('rt-ph').on('postgres_changes',{event:'*',schema:'public',table:'public_holidays'},
         ()=>supabase.from('public_holidays').select('*').order('iso_date').then(r=>setPublicHolidayRows(r.data||[]))).subscribe(),
+      supabase.channel('rt-roles').on('postgres_changes',{event:'*',schema:'public',table:'roles'},
+        ()=>supabase.from('roles').select('*').order('sort_order').then(r=>setRoles(r.data||[]))).subscribe(),
     ]
     return ()=>channels.forEach(c=>supabase.removeChannel(c))
   },[reloadAssignments])
@@ -717,6 +729,7 @@ export default function App() {
             weekStart={weekStart} setWeekStart={setWeekStart}
             gridWeeks={gridWeeks} setGridWeeks={setGridWeeks}
             teamMembers={teamMembers} projects={projects} adminTasks={adminTasks}
+            roles={roles}
             tasks={tasks} upcomingLeave={upcomingLeave} upcomingPH={upcomingPH}
             upcomingLeaveRows={upcomingLeaveRows} setUpcomingLeaveRows={setUpcomingLeaveRows}
             publicHolidayRows={publicHolidayRows} setPublicHolidayRows={setPublicHolidayRows}
@@ -749,7 +762,9 @@ export default function App() {
         )}
         {tab==='team'&&(
           <TeamTab teamMembers={teamMembers} setTeamMembers={setTeamMembers}
-            setMemberModal={setMemberModal} withUndo={withUndo} T={T} />
+            roles={roles} setRoles={setRoles}
+            setMemberModal={setMemberModal} setRoleModal={setRoleModal}
+            withUndo={withUndo} T={T} />
         )}
       </div>
       </div>
@@ -775,7 +790,7 @@ export default function App() {
             const r=await supabase.from('admin_tasks').select('*').order('name'); setAdminTasks(r.data||[])
           }); setAdminTaskModal(null)
         }} />}
-      {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers}
+      {memberModal!==null&&<MemberModal item={memberModal} teamMembers={teamMembers} roles={roles}
         onClose={()=>setMemberModal(null)} T={T}
         onSave={async row=>{
           await withUndo(async()=>{
@@ -783,6 +798,15 @@ export default function App() {
             else await supabase.from('team_members').insert(row)
             const r=await supabase.from('team_members').select('*').order('office').order('sort_order'); setTeamMembers(r.data||[])
           }); setMemberModal(null)
+        }} />}
+      {roleModal!==null&&<RoleModal item={roleModal} roles={roles}
+        onClose={()=>setRoleModal(null)} T={T} showToast={showToast}
+        onSave={async row=>{
+          await withUndo(async()=>{
+            if(row.id&&roles.find(x=>x.id===row.id)) await supabase.from('roles').update(row).eq('id',row.id)
+            else await supabase.from('roles').insert({...row,id:row.id||'r'+Date.now()})
+            const r=await supabase.from('roles').select('*').order('sort_order'); setRoles(r.data||[])
+          }); setRoleModal(null)
         }} />}
       {leaveModal!==null&&<LeaveModal item={leaveModal} teamMembers={teamMembers}
         onClose={()=>setLeaveModal(null)} showToast={showToast} T={T}
@@ -809,7 +833,7 @@ export default function App() {
 // WORKLOAD TAB
 // ════════════════════════════════════════════════════════════════════
 function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
-  gridWeeks,setGridWeeks,teamMembers,projects,adminTasks,tasks,upcomingLeave,upcomingPH,
+  gridWeeks,setGridWeeks,teamMembers,projects,adminTasks,roles,tasks,upcomingLeave,upcomingPH,
   upcomingLeaveRows,setUpcomingLeaveRows,publicHolidayRows,setPublicHolidayRows,
   officeFilter,setOfficeFilter,projectFilter,setProjectFilter,
   leaveFilter,setLeaveFilter,unassignedFilter,setUnassignedFilter,
@@ -1021,7 +1045,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
                 ...members.map(m=>(
                   <MemberRow key={m.id} member={m}
                     weekSegments={weekSegments} allWorkdays={allWorkdays}
-                    getActive={getActive} projects={projects} adminTasks={adminTasks}
+                    getActive={getActive} projects={projects} adminTasks={adminTasks} roles={roles}
                     setAssignModal={setAssignModal}
                     startResize={startResize} startCopy={startCopy}
                     adjustTaskDate={adjustTaskDate}
@@ -1078,7 +1102,7 @@ function SectionTitle({title,T}){
 }
 
 // ── Member Row ─────────────────────────────────────────────────────────
-function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,
+function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,roles,
   setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop,T,tdStyle}){
   const [hovered,setHovered]=useState(false)
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
@@ -1187,7 +1211,7 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
       <td style={{background:T.surfaceSecond,border:`1px solid ${T.borderLight}`,
         padding:'6px 8px 6px 12px',verticalAlign:'middle',position:'sticky',left:0,zIndex:2}}>
         {(()=>{
-          const cat=getRoleCat(member.role)
+          const cat=getRoleCat(member.role, roles)
           const cc=CAT_COLORS[cat]
           return(
             <div style={{display:'flex',alignItems:'center',gap:6,
@@ -1334,40 +1358,43 @@ function ProjectsTab({projects,setProjects,adminTasks,setAdminTasks,setProjectMo
   )
 }
 
-// ── Role definitions with category ───────────────────────────────────
+// ── Role seed data (used only for SQL seeding reference in code) ──────
+// Live roles come from Supabase 'roles' table — PREDEFINED_ROLES is the fallback
 const PREDEFINED_ROLES = [
-  { title:'Section Manager',    cat:'other' },
-  { title:'Section Leader',     cat:'other' },
-  { title:'Senior Team Leader', cat:'3d' },
-  { title:'Team Leader',        cat:'3d' },
-  { title:'Junior Team Leader', cat:'3d' },
-  { title:'Senior Checker',     cat:'2d' },
-  { title:'Checker',            cat:'2d' },
-  { title:'Junior Checker',     cat:'2d' },
-  { title:'Senior Modeler',     cat:'3d' },
-  { title:'Modeler',            cat:'3d' },
-  { title:'Junior Modeler',     cat:'3d' },
-  { title:'Senior Editor',      cat:'2d' },
-  { title:'Editor',             cat:'2d' },
-  { title:'Junior Editor',      cat:'2d' },
-  { title:'Admin Assistant',    cat:'other' },
-  { title:'Cadet',              cat:'other' },
+  { id:'r1',  title:'Section Manager',    cat:'other', sort_order:1 },
+  { id:'r2',  title:'Section Leader',     cat:'other', sort_order:2 },
+  { id:'r3',  title:'Senior Team Leader', cat:'3d',    sort_order:3 },
+  { id:'r4',  title:'Team Leader',        cat:'3d',    sort_order:4 },
+  { id:'r5',  title:'Junior Team Leader', cat:'3d',    sort_order:5 },
+  { id:'r6',  title:'Senior Checker',     cat:'2d',    sort_order:6 },
+  { id:'r7',  title:'Checker',            cat:'2d',    sort_order:7 },
+  { id:'r8',  title:'Junior Checker',     cat:'2d',    sort_order:8 },
+  { id:'r9',  title:'Senior Modeler',     cat:'3d',    sort_order:9 },
+  { id:'r10', title:'Modeler',            cat:'3d',    sort_order:10 },
+  { id:'r11', title:'Junior Modeler',     cat:'3d',    sort_order:11 },
+  { id:'r12', title:'Senior Editor',      cat:'2d',    sort_order:12 },
+  { id:'r13', title:'Editor',             cat:'2d',    sort_order:13 },
+  { id:'r14', title:'Junior Editor',      cat:'2d',    sort_order:14 },
+  { id:'r15', title:'Admin Assistant',    cat:'other', sort_order:15 },
+  { id:'r16', title:'Cadet',              cat:'other', sort_order:16 },
 ]
 
 const CAT_COLORS = {
-  '3d':    { bg:'rgba(46,125,209,.18)',  border:'#2e7dd1', text:'#2e7dd1',  label:'3D' },
-  '2d':    { bg:'rgba(60,184,122,.18)',  border:'#3cb87a', text:'#3cb87a',  label:'2D' },
-  'other': { bg:'rgba(150,130,80,.18)',  border:'#b8922a', text:'#b8922a',  label:'Other' },
+  '3d':    { bg:'rgba(46,125,209,.18)',  border:'#2e7dd1', text:'#2e7dd1', label:'3D' },
+  '2d':    { bg:'rgba(60,184,122,.18)',  border:'#3cb87a', text:'#3cb87a', label:'2D' },
+  'other': { bg:'rgba(150,130,80,.18)', border:'#b8922a', text:'#b8922a', label:'Other' },
 }
 
-function getRoleCat(roleTitle) {
-  return PREDEFINED_ROLES.find(r=>r.title===roleTitle)?.cat || 'other'
+// Accepts live roles from DB, falls back to built-in list
+function getRoleCat(roleTitle, liveRoles) {
+  const list = (liveRoles&&liveRoles.length>0) ? liveRoles : PREDEFINED_ROLES
+  return list.find(r=>r.title===roleTitle)?.cat || 'other'
 }
 
 // ════════════════════════════════════════════════════════════════════
 // TEAM TAB
 // ════════════════════════════════════════════════════════════════════
-function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
+function TeamTab({teamMembers,setTeamMembers,roles,setRoles,setMemberModal,setRoleModal,withUndo,T}){
   const [sort,setSort]=useState({col:'office',dir:1})
   function toggle(col){ setSort(s=>s.col===col?{col,dir:-s.dir}:{col,dir:1}) }
   const sorted=[...teamMembers].sort((a,b)=>{
@@ -1385,8 +1412,19 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
       {ch}{sort.col===col?(sort.dir===1?' ^':' v'):''}
     </th>
   )
+
+  const liveRoles = roles.length>0 ? roles : PREDEFINED_ROLES
+
+  async function deleteRole(id) {
+    await withUndo(async()=>{
+      await supabase.from('roles').delete().eq('id',id)
+      const r=await supabase.from('roles').select('*').order('sort_order')
+      setRoles(r.data||[])
+    })
+  }
+
   return(
-    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start',maxWidth:1000}}>
+    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:20,alignItems:'start',maxWidth:1100}}>
       {/* Team members table */}
       <AdminSection title="Team Members" onAdd={()=>setMemberModal({})} T={T}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,tableLayout:'fixed'}}><thead><tr>
@@ -1397,7 +1435,7 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
           <th style={{...adminTh,width:80}}>Actions</th>
         </tr></thead><tbody>
           {sorted.map(m=>{
-            const cat=getRoleCat(m.role)
+            const cat=getRoleCat(m.role, liveRoles)
             const cc=CAT_COLORS[cat]
             return(
               <tr key={m.id} style={{borderBottom:`1px solid ${T.border}`}}>
@@ -1407,8 +1445,7 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
                 <td style={{...adminTd,color:T.textSecondary,background:cc.bg}}>{m.role}</td>
                 <td style={{...adminTd,background:cc.bg}}>
                   <span style={{display:'inline-block',padding:'1px 7px',borderRadius:8,fontSize:10,
-                    border:`1px solid ${cc.border}`,color:cc.text,background:'transparent',
-                    whiteSpace:'nowrap'}}>
+                    border:`1px solid ${cc.border}`,color:cc.text,background:'transparent',whiteSpace:'nowrap'}}>
                     {cc.label}
                   </span>
                 </td>
@@ -1433,29 +1470,39 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
         </tbody></table>
       </AdminSection>
 
-      {/* Roles reference table */}
+      {/* Roles table — editable */}
       <div style={{background:T.surfacePrimary,border:`1px solid ${T.border}`,borderRadius:6,
-        overflow:'hidden',minWidth:240,flexShrink:0}}>
-        <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`}}>
+        overflow:'hidden',minWidth:280,flexShrink:0}}>
+        <div style={{padding:'12px 16px',background:T.surfaceSecond,borderBottom:`1px solid ${T.border}`,
+          display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{fontFamily:'Syne,sans-serif',fontSize:13,fontWeight:700,color:T.textPrimary}}>Roles</div>
+          <button onClick={()=>setRoleModal({})}
+            style={{background:T.blue,border:'none',color:'#fff',
+              padding:'4px 12px',borderRadius:4,cursor:'pointer',fontSize:12}}>+ Add</button>
         </div>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>
             <th style={{...adminTh,padding:'6px 12px',width:28}}>#</th>
             <th style={{...adminTh,padding:'6px 12px'}}>Designation</th>
             <th style={{...adminTh,padding:'6px 12px',width:60}}>Cat</th>
+            <th style={{...adminTh,padding:'6px 12px',width:64}}>Actions</th>
           </tr></thead>
           <tbody>
-            {PREDEFINED_ROLES.map((r,i)=>{
-              const cc=CAT_COLORS[r.cat]
+            {liveRoles.map((r,i)=>{
+              const cc=CAT_COLORS[r.cat]||CAT_COLORS.other
               return(
-                <tr key={r.title} style={{borderBottom:`1px solid ${T.borderLight}`,
-                  background:cc.bg}}>
+                <tr key={r.id} style={{borderBottom:`1px solid ${T.borderLight}`,background:cc.bg}}>
                   <td style={{padding:'5px 12px',color:T.textMuted,textAlign:'center'}}>{i+1}</td>
                   <td style={{padding:'5px 12px',color:T.textPrimary}}>{r.title}</td>
                   <td style={{padding:'5px 12px'}}>
                     <span style={{padding:'1px 6px',borderRadius:8,fontSize:9,
                       border:`1px solid ${cc.border}`,color:cc.text}}>{cc.label}</span>
+                  </td>
+                  <td style={{padding:'4px 8px'}}>
+                    <button onClick={()=>setRoleModal(r)}
+                      style={{...iconBtn,padding:'2px 4px',fontSize:14}}>✎</button>
+                    <button onClick={()=>deleteRole(r.id)}
+                      style={{...iconBtn,padding:'2px 4px',color:T.red}}>✕</button>
                   </td>
                 </tr>
               )
@@ -1463,10 +1510,11 @@ function TeamTab({teamMembers,setTeamMembers,setMemberModal,withUndo,T}){
           </tbody>
         </table>
         {/* Legend */}
-        <div style={{padding:'10px 12px',borderTop:`1px solid ${T.border}`,display:'flex',gap:10,flexWrap:'wrap'}}>
+        <div style={{padding:'10px 12px',borderTop:`1px solid ${T.border}`,display:'flex',gap:12,flexWrap:'wrap'}}>
           {Object.entries(CAT_COLORS).map(([k,v])=>(
             <span key={k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:T.textSecondary}}>
-              <span style={{width:10,height:10,borderRadius:2,background:v.bg,border:`1px solid ${v.border}`,display:'inline-block'}} />
+              <span style={{width:10,height:10,borderRadius:2,background:v.bg,
+                border:`1px solid ${v.border}`,display:'inline-block'}} />
               {v.label}
             </span>
           ))}
@@ -1637,7 +1685,7 @@ function AdminTaskModal({item,onClose,onSave,projects,adminTasks,T}){
   )
 }
 
-function MemberModal({item,onClose,onSave,teamMembers,T}){
+function MemberModal({item,onClose,onSave,teamMembers,roles,T}){
   const I=makeI(T); const btnBase=makeBtnBase(T)
   const [name,setName]=useState(item?.name||'')
   const [role,setRole]=useState(item?.role||'')
@@ -1645,8 +1693,9 @@ function MemberModal({item,onClose,onSave,teamMembers,T}){
   const [customOffice,setCustomOffice]=useState('')
   const known=['Brisbane','Chennai','Bangkok']
   const custom=[...new Set((teamMembers||[]).map(m=>m.office).filter(o=>!known.includes(o)))]
-  const cat = getRoleCat(role)
-  const cc = CAT_COLORS[cat]
+  const liveRoles = roles&&roles.length>0 ? roles : PREDEFINED_ROLES
+  const cat = getRoleCat(role, liveRoles)
+  const cc = CAT_COLORS[cat]||CAT_COLORS.other
   return(
     <Modal open onClose={onClose} T={T}>
       <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{item?.id?'Edit Member':'Add Member'}</h3>
@@ -1655,8 +1704,8 @@ function MemberModal({item,onClose,onSave,teamMembers,T}){
       <label style={I.label}>Role</label>
       <select value={role} onChange={e=>setRole(e.target.value)} style={I.base}>
         <option value="">— select role —</option>
-        {PREDEFINED_ROLES.map(r=>(
-          <option key={r.title} value={r.title}>{r.title}</option>
+        {liveRoles.map(r=>(
+          <option key={r.id} value={r.title}>{r.title}</option>
         ))}
       </select>
       {role&&(
@@ -1763,6 +1812,58 @@ function PHModal({item,onClose,onSave,showToast,T}){
           const display=endIsoDate&&endIsoDate!==isoDate
             ?`${fmtPHDate(isoDate)} - ${fmtPHDate(endIsoDate)}`:fmtPHDate(isoDate)
           onSave({...item,office,name,iso_date:isoDate,end_iso_date:endIsoDate||null,display_date:display})
+        }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
+      </div>
+    </Modal>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ROLE MODAL
+// ════════════════════════════════════════════════════════════════════
+function RoleModal({item,onClose,onSave,roles,showToast,T}){
+  const I=makeI(T); const btnBase=makeBtnBase(T)
+  const isNew=!item?.id
+  const maxOrder=roles&&roles.length>0?Math.max(...roles.map(r=>r.sort_order||0))+1:1
+  const [title,setTitle]=useState(item?.title||'')
+  const [cat,setCat]=useState(item?.cat||'3d')
+  const [sortOrder,setSortOrder]=useState(item?.sort_order||maxOrder)
+  const cc=CAT_COLORS[cat]||CAT_COLORS.other
+  return(
+    <Modal open onClose={onClose} T={T}>
+      <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>
+        {isNew?'Add Role':'Edit Role'}
+      </h3>
+      <label style={I.label}>Designation / Title</label>
+      <input value={title} onChange={e=>setTitle(e.target.value)}
+        placeholder="e.g. Senior Modeler" style={I.base} />
+      <label style={I.label}>Category</label>
+      <div style={{display:'flex',gap:8,marginTop:6}}>
+        {Object.entries(CAT_COLORS).map(([k,v])=>(
+          <button key={k} onClick={()=>setCat(k)}
+            style={{flex:1,padding:'8px',borderRadius:6,cursor:'pointer',fontSize:12,
+              border:`2px solid ${cat===k?v.border:T.border}`,
+              background:cat===k?v.bg:T.surfaceSecond,
+              color:cat===k?v.text:T.textSecondary,
+              fontFamily:'DM Mono,monospace',transition:'all .15s'}}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <div style={{marginTop:10,padding:'8px 12px',borderRadius:6,background:cc.bg,
+        border:`1px solid ${cc.border}`,display:'flex',alignItems:'center',gap:10}}>
+        <span style={{fontSize:12,color:cc.text,fontWeight:500}}>{title||'Role name'}</span>
+        <span style={{padding:'1px 8px',borderRadius:8,fontSize:10,
+          border:`1px solid ${cc.border}`,color:cc.text}}>{cc.label}</span>
+      </div>
+      <label style={I.label}>Sort Order</label>
+      <input type="number" value={sortOrder} onChange={e=>setSortOrder(Number(e.target.value))}
+        min={1} style={{...I.base,width:100}} />
+      <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
+        <button onClick={onClose} style={btnBase}>Cancel</button>
+        <button onClick={()=>{
+          if(!title.trim()){showToast('Enter a role title');return}
+          onSave({...item,title:title.trim(),cat,sort_order:sortOrder})
         }} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
       </div>
     </Modal>
