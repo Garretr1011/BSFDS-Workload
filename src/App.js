@@ -1157,26 +1157,29 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
 
   // Determine if this is the first/last rendered cell for a given entry
-  function isFirstCell(ds, startDs) {
+  function isFirstCell(ds, entryStartDs) {
+    // First cell for this entry if no earlier workday in allWorkDays has this same startDs active
     for(const wd of allWorkDays){
       const wds=fmtDate(wd)
       if(wds===ds) return true
       const entries=getActiveAll(member.name,wds)
-      if(entries.some(a=>a.startDs===startDs)) return false
+      if(entries.some(a=>a.startDs===entryStartDs)) return false
     }
     return true
   }
-  function isLastCell(lastCellDs, startDs) {
+
+  function isLastCell(lastCellDs, entryStartDs) {
+    // Last cell for this entry if no later workday in allWorkDays has this same startDs active
     for(let k=allWorkDays.length-1;k>=0;k--){
       const wds=fmtDate(allWorkDays[k])
       const entries=getActiveAll(member.name,wds)
-      if(entries.some(a=>a.startDs===startDs)) return wds===lastCellDs
+      if(entries.some(a=>a.startDs===entryStartDs)) return wds===lastCellDs
     }
     return false
   }
 
   // Render a single entry row within a stacked cell
-  function renderEntryRow(entry, startDs, isVirtual, ds, workDays, i, j, isOnly) {
+  function renderEntryRow(entry, startDs, isVirtual, ds, lastCellDs, isOnly) {
     const projColor=['leave','ph'].includes(entry.wtype)?null:getProjectColor(entry.pid,projects,adminTasks)
     let bg=T.surfacePrimary, bc=T.blue, textColor=T.textPrimary
     if(entry.wtype==='leave'){bg=T.redLight;bc=T.red;textColor=T.redText}
@@ -1184,9 +1187,8 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     else if(entry.wtype==='admin'){bg=T.grayLight;bc=T.gray;textColor=T.textSecondary}
     else if(projColor){const {r,g,b}=hexToRgb(projColor);bg=`rgba(${r},${g},${b},${T.mode!=='light'?.18:.15})`;bc=projColor;textColor=T.mode!=='light'?'#ffffff':projColor}
 
-    const lastCellDs=fmtDate(workDays[j-1])
-    const showStart=!isVirtual&&isFirstCell(ds,startDs)
-    const showEnd=!isVirtual&&isLastCell(lastCellDs,startDs)
+    const showStart=!isVirtual&&isFirstCell(ds, startDs)
+    const showEnd=!isVirtual&&isLastCell(lastCellDs, startDs)
     const isHov=hoveredEntry===entry.id
 
     return(
@@ -1259,30 +1261,39 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
         ); i++; continue
       }
 
-      // For spanning: find span based on the FIRST entry (primary entry drives span)
+      // Spanning: only attempt to span if there is exactly ONE entry active on this day
+      // and it's the same entry continuing into subsequent days.
+      // Multi-entry (stacked) days always render as a single column — no spanning.
       const {entry:firstEntry,startDs:firstStartDs,isVirtual:firstVirtual}=activeEntries[0]
-      let span=1,j=i+1
-      while(j<workDays.length){
-        const nextEntries=getActiveAll(member.name,fmtDate(workDays[j]))
-        // Span continues if the first entry continues into the next day
-        if(nextEntries.length>0&&nextEntries[0].startDs===firstStartDs) {span++;j++} else break
+      let span=1, j=i+1
+
+      if(activeEntries.length===1) {
+        // Single entry — check how far it spans in this week segment
+        while(j<workDays.length){
+          const nextEntries=getActiveAll(member.name,fmtDate(workDays[j]))
+          // Continue span only if the next day has exactly one entry with the same startDs
+          if(nextEntries.length===1&&nextEntries[0].startDs===firstStartDs){span++;j++}else break
+        }
       }
+      // If multi-entry: span=1, j=i+1 (render just this column)
 
       cells.push(
         <td key={ds} colSpan={span}
           style={{...tdStyle,padding:0,verticalAlign:'top',background:isToday?T.surfaceToday:'transparent'}}>
           {/* Stack all active entries */}
           <div style={{display:'flex',flexDirection:'column',minHeight:52}}>
-            {activeEntries.map((ae,idx)=>
-              renderEntryRow(ae.entry,ae.startDs,ae.isVirtual,ds,workDays,i,j,activeEntries.length===1)
-            )}
-            {/* Add another row button — only on non-virtual cells */}
+            {activeEntries.map((ae,idx)=>{
+              // For single-entry spanning cells, lastCellDs is the last day of the span
+              // For stacked cells (span=1), lastCellDs is just ds itself
+              const lastCellDs = activeEntries.length===1 ? fmtDate(workDays[j-1]) : ds
+              return renderEntryRow(ae.entry,ae.startDs,ae.isVirtual,ds,lastCellDs,activeEntries.length===1)
+            })}
+            {/* Add split button — only on non-virtual cells */}
             {!activeEntries[0].isVirtual&&(
               <div onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}
                 style={{display:'flex',alignItems:'center',justifyContent:'center',
                   padding:'2px',cursor:'pointer',color:T.textMuted,fontSize:8,
-                  background:'transparent',
-                  opacity:.6,
+                  background:'transparent',opacity:.6,
                   borderTop:`1px dashed ${T.borderLight}`}}
                 onMouseEnter={e=>e.currentTarget.style.opacity=1}
                 onMouseLeave={e=>e.currentTarget.style.opacity=.6}>
