@@ -1276,27 +1276,32 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
 
       cells.push(
         <td key={ds} colSpan={span}
-          style={{...tdStyle,padding:0,verticalAlign:'top',background:isToday?T.surfaceToday:'transparent'}}>
+          style={{...tdStyle,padding:0,verticalAlign:'top',background:isToday?T.surfaceToday:'transparent',
+            position:'relative'}}
+          onMouseEnter={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=1}}
+          onMouseLeave={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=0}}>
           {/* Stack all active entries */}
           <div style={{display:'flex',flexDirection:'column',minHeight:52}}>
             {activeEntries.map((ae,idx)=>{
-              // lastCellDs is always the last day of the span for this td
               const lastCellDs = fmtDate(workDays[j-1])
               return renderEntryRow(ae.entry,ae.startDs,ae.isVirtual,ds,lastCellDs,activeEntries.length===1)
             })}
-            {/* Add split button — only on non-virtual cells */}
-            {!activeEntries[0].isVirtual&&(
-              <div onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}
-                style={{display:'flex',alignItems:'center',justifyContent:'center',
-                  padding:'2px',cursor:'pointer',color:T.textMuted,fontSize:8,
-                  background:'transparent',opacity:.6,
-                  borderTop:`1px dashed ${T.borderLight}`}}
-                onMouseEnter={e=>e.currentTarget.style.opacity=1}
-                onMouseLeave={e=>e.currentTarget.style.opacity=.6}>
-                + split
-              </div>
-            )}
           </div>
+          {/* Split button — hidden overlay, appears on cell hover */}
+          {!firstVirtual&&(
+            <div className="split-btn"
+              onClick={e=>{e.stopPropagation();setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}}
+              style={{
+                position:'absolute',bottom:2,right:3,
+                opacity:0,transition:'opacity .15s',
+                fontSize:8,padding:'1px 5px',borderRadius:3,cursor:'pointer',
+                background:T.mode!=='light'?'rgba(255,255,255,.1)':'rgba(0,0,0,.08)',
+                color:T.textMuted,border:`1px solid ${T.borderLight}`,
+                userSelect:'none',lineHeight:1.4,
+              }}>
+              + split
+            </div>
+          )}
         </td>
       )
       i=j
