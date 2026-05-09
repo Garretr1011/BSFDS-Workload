@@ -1156,10 +1156,7 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)':'rgba(0,0,0,.4)',
     fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
   // Render a single entry row within a stacked cell
-  // currentDs is set per-call in renderWeek so renderEntryRow can access it
-  let currentDs = ''
-
-  function renderEntryRow(ae, isOnly) {
+  function renderEntryRow(ae, isOnly, cellStartDs, lastSpanDs) {
     const {entry, startDs, isVirtual} = ae
     const projColor = ['leave','ph'].includes(entry.wtype) ? null : getProjectColor(entry.pid,projects,adminTasks)
     let bc=T.blue, textColor=T.textPrimary
@@ -1172,7 +1169,7 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     const r=parseInt(hx.slice(0,2),16),g=parseInt(hx.slice(2,4),16),b2=parseInt(hx.slice(4,6),16)
     const bg=`rgba(${r},${g},${b2},${T.mode!=='light'?.18:.15})`
 
-    // Find the first and last workday where this exact entry appears
+    // Find the first and last workday where this exact entry appears (across both weeks)
     const entryWorkdays = allWorkDays.filter(wd => {
       const entries = getActiveAll(member.name, fmtDate(wd))
       return entries.some(a => a.entry.id===entry.id && a.startDs===startDs)
@@ -1180,8 +1177,10 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     const firstWd = entryWorkdays.length>0 ? fmtDate(entryWorkdays[0]) : startDs
     const lastWd  = entryWorkdays.length>0 ? fmtDate(entryWorkdays[entryWorkdays.length-1]) : entry.end_date
     const isHov = hoveredEntry===entry.id
-    const showStart = !isVirtual && currentDs===firstWd
-    const showEnd   = !isVirtual && currentDs===lastWd
+    // Show start arrows only on the td that contains the entry's first workday
+    const showStart = !isVirtual && cellStartDs===firstWd
+    // Show end arrows only on the td that contains the entry's last workday
+    const showEnd   = !isVirtual && lastSpanDs===lastWd
 
     return(
       <div key={entry.id||startDs}
@@ -1231,7 +1230,6 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
     const cells=[]; let i=0
     while(i<workDays.length){
       const d=workDays[i], ds=fmtDate(d)
-      currentDs = ds
       const isToday=ds===todayDs
       const activeEntries=getActiveAll(member.name,ds)
 
@@ -1250,15 +1248,17 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
 
       const {isVirtual:firstVirtual}=activeEntries[0]
 
-      // Span only single-entry cells — multi-entry always render per column
+      // Span cells when ALL entries on the next day are identical (same ids, same order)
+      // This works for both single and multi-entry spans
+      const idsKey = activeEntries.map(ae=>ae.entry.id).join('|')
       let span=1, j=i+1
-      if(activeEntries.length===1){
-        const ae0=activeEntries[0]
-        while(j<workDays.length){
-          const nxt=getActiveAll(member.name,fmtDate(workDays[j]))
-          if(nxt.length===1&&nxt[0].startDs===ae0.startDs&&nxt[0].entry.id===ae0.entry.id){span++;j++}else break
-        }
+      while(j<workDays.length){
+        const nxt=getActiveAll(member.name,fmtDate(workDays[j]))
+        const nxtKey=nxt.map(ae=>ae.entry.id).join('|')
+        if(nxt.length===activeEntries.length && nxtKey===idsKey){span++;j++}else break
       }
+      // lastDs is the last day of this span — used for end-arrow visibility
+      const lastSpanDs = fmtDate(workDays[j-1])
 
       cells.push(
         <td key={ds} colSpan={span}
@@ -1267,15 +1267,16 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
           onMouseEnter={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=1}}
           onMouseLeave={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=0}}>
           <div style={{display:'flex',flexDirection:'column'}}>
-            {activeEntries.map(ae=>renderEntryRow(ae,activeEntries.length===1))}
+            {activeEntries.map(ae=>renderEntryRow(ae, activeEntries.length===1, ds, lastSpanDs))}
           </div>
           {!firstVirtual&&(
             <div className="split-btn"
               onClick={e=>{e.stopPropagation();setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}}
-              style={{position:'absolute',bottom:2,right:3,opacity:0,transition:'opacity .15s',
+              style={{position:'absolute',bottom:2,left:'50%',transform:'translateX(-50%)',
+                opacity:0,transition:'opacity .15s',
                 fontSize:8,padding:'1px 5px',borderRadius:3,cursor:'pointer',userSelect:'none',lineHeight:1.4,
                 background:T.mode!=='light'?'rgba(255,255,255,.1)':'rgba(0,0,0,.08)',
-                color:T.textMuted,border:`1px solid ${T.borderLight}`}}>
+                color:T.textMuted,border:`1px solid ${T.borderLight}`,whiteSpace:'nowrap'}}>
               + split
             </div>
           )}
