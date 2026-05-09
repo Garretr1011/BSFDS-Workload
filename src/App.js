@@ -1829,8 +1829,6 @@ function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast
     </Modal>
   )
 }
-  )
-}
 
 function ProjectModal({item,onClose,onSave,projects,adminTasks,T}){
   const I=makeI(T); const btnBase=makeBtnBase(T)
