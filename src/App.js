@@ -1261,21 +1261,18 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
         ); i++; continue
       }
 
-      // Spanning: only attempt to span if there is exactly ONE entry active on this day
-      // and it's the same entry continuing into subsequent days.
-      // Multi-entry (stacked) days always render as a single column — no spanning.
       const {entry:firstEntry,startDs:firstStartDs,isVirtual:firstVirtual}=activeEntries[0]
+      // Spanning logic:
+      // A cell spans multiple columns only if EVERY subsequent day has the EXACT SAME
+      // set of entries (same startDs keys). This handles both single and multi-entry spans.
+      const entryKeys = activeEntries.map(ae=>ae.startDs).sort().join('|')
       let span=1, j=i+1
-
-      if(activeEntries.length===1) {
-        // Single entry — check how far it spans in this week segment
-        while(j<workDays.length){
-          const nextEntries=getActiveAll(member.name,fmtDate(workDays[j]))
-          // Continue span only if the next day has exactly one entry with the same startDs
-          if(nextEntries.length===1&&nextEntries[0].startDs===firstStartDs){span++;j++}else break
-        }
+      while(j<workDays.length){
+        const nextEntries=getActiveAll(member.name,fmtDate(workDays[j]))
+        const nextKeys = nextEntries.map(ae=>ae.startDs).sort().join('|')
+        // Only span if same number of entries AND same startDs keys
+        if(nextEntries.length===activeEntries.length && nextKeys===entryKeys){span++;j++}else break
       }
-      // If multi-entry: span=1, j=i+1 (render just this column)
 
       cells.push(
         <td key={ds} colSpan={span}
@@ -1283,9 +1280,8 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
           {/* Stack all active entries */}
           <div style={{display:'flex',flexDirection:'column',minHeight:52}}>
             {activeEntries.map((ae,idx)=>{
-              // For single-entry spanning cells, lastCellDs is the last day of the span
-              // For stacked cells (span=1), lastCellDs is just ds itself
-              const lastCellDs = activeEntries.length===1 ? fmtDate(workDays[j-1]) : ds
+              // lastCellDs is always the last day of the span for this td
+              const lastCellDs = fmtDate(workDays[j-1])
               return renderEntryRow(ae.entry,ae.startDs,ae.isVirtual,ds,lastCellDs,activeEntries.length===1)
             })}
             {/* Add split button — only on non-virtual cells */}
