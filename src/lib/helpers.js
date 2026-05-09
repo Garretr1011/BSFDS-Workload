@@ -15,18 +15,15 @@ export function parseLocalDate(iso) {
   const [y,m,d] = iso.split('-').map(Number); return new Date(y,m-1,d)
 }
 
-// DD MMM (no year) — for grid headers
 export function fmtDisplay(d) {
   return d.toLocaleDateString('en-AU',{day:'numeric',month:'short'})
 }
 
-// DD MMM YY — for leave dates
 export function fmtLeaveDate(isoStr) {
   const d = parseLocalDate(isoStr)
   return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'2-digit'})
 }
 
-// DD MMM YYYY — for public holiday dates
 export function fmtPHDate(isoStr) {
   const d = parseLocalDate(isoStr)
   return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'})
@@ -45,11 +42,9 @@ export function getWeekDays(weekStart, numWeeks=2) {
   return Array.from({length:numWeeks*7},(_,i)=>addDays(weekStart,i))
 }
 
-// DAY_SHORT extended to cover 4 weeks (28 days = Mon..Sun repeated 4x)
 const _ds = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 export const DAY_SHORT = [..._ds,..._ds,..._ds,..._ds]
 
-// Public holiday always wins — check this before anything else
 export function getPHForDate(dateStr, office, upcomingPH) {
   for (const ph of (upcomingPH[office]||[])) {
     if (!ph.iso_date) continue
@@ -59,56 +54,75 @@ export function getPHForDate(dateStr, office, upcomingPH) {
   return null
 }
 
+// Returns a SINGLE active entry (for backward compat — PH/leave priority)
 export function getActiveTask(name, dateStr, tasks, upcomingLeave, upcomingPH, teamMembers) {
+  const entries = getActiveEntries(name, dateStr, tasks, upcomingLeave, upcomingPH, teamMembers)
+  return entries.length > 0 ? entries[0] : null
+}
+
+// Returns ALL active entries for a date — supports stacked multi-project cells
+// Virtual entries (PH, leave) are always singletons and override manual tasks
+export function getActiveEntries(name, dateStr, tasks, upcomingLeave, upcomingPH, teamMembers) {
   const member = teamMembers.find(m=>m.name===name)
   const office = member?.office
 
-  // 1. PH always wins — even over manual tasks
+  // 1. PH always wins — returns single virtual entry
   if (office) {
     const ph = getPHForDate(dateStr, office, upcomingPH)
     if (ph) {
-      return {
+      return [{
         entry:{ pid:'', task:ph.name, wtype:'ph', end_date:ph.end_iso_date||ph.iso_date },
         startDs: ph.iso_date, isVirtual:true
+      }]
+    }
+  }
+
+  // 2. Collect all manual tasks active on this date
+  const memberTasks = tasks[name]||{}
+  const results = []
+
+  // Tasks starting exactly on this date
+  for (const e of (memberTasks[dateStr]||[])) {
+    results.push({ entry:e, startDs:dateStr })
+  }
+
+  // Spanning tasks started before this date
+  for (const startDs of Object.keys(memberTasks).sort()) {
+    if (startDs >= dateStr) continue
+    for (const t of (memberTasks[startDs]||[])) {
+      if (t.end_date && t.end_date >= dateStr) {
+        results.push({ entry:t, startDs })
       }
     }
   }
 
-  // 2. Manual task starting exactly on this date
-  const memberTasks = tasks[name]||{}
-  if (memberTasks[dateStr]?.length) return { entry:memberTasks[dateStr][0], startDs:dateStr }
+  if (results.length > 0) return results
 
-  // 3. Spanning manual task (started earlier, ends on or after this date)
-  for (const startDs of Object.keys(memberTasks).sort()) {
-    if (startDs>=dateStr) continue
-    for (const t of (memberTasks[startDs]||[])) {
-      if (t.end_date && t.end_date>=dateStr) return { entry:t, startDs }
-    }
-  }
-
-  // 4. Virtual leave from upcoming_leave panel
+  // 3. Virtual leave (only if no manual tasks)
   if (office) {
     for (const item of (upcomingLeave[office]||[])) {
       if (item.name!==name || !item.start_date || !item.end_date) continue
       if (dateStr>=item.start_date && dateStr<=item.end_date) {
-        return {
+        return [{
           entry:{ pid:'', task:`Leave — ${item.dates||item.name}`, wtype:'leave', end_date:item.end_date },
           startDs:item.start_date, isVirtual:true
-        }
+        }]
       }
     }
   }
-  return null
+  return []
 }
 
+// buildTasksMap now stores ARRAYS per date (multiple entries per date allowed)
 export function buildTasksMap(assignments) {
   const map = {}
   for (const a of assignments) {
-    if (!map[a.member_name]) map[a.member_name]={}
-    map[a.member_name][a.start_date] = [{
+    if (!map[a.member_name]) map[a.member_name] = {}
+    if (!map[a.member_name][a.start_date]) map[a.member_name][a.start_date] = []
+    map[a.member_name][a.start_date].push({
       id:a.id, pid:a.pid||'', task:a.task, wtype:a.wtype,
       end_date:a.end_date, notes:a.notes||''
-    }]
+    })
   }
   return map
 }
