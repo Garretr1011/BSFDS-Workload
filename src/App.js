@@ -1155,41 +1155,33 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
   const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)',
     border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)':'rgba(0,0,0,.4)',
     fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
-
-  // Determine if this is the first/last rendered cell for a given entry
-  function isFirstCell(ds, entryStartDs) {
-    // First cell for this entry if no earlier workday in allWorkDays has this same startDs active
-    for(const wd of allWorkDays){
-      const wds=fmtDate(wd)
-      if(wds===ds) return true
-      const entries=getActiveAll(member.name,wds)
-      if(entries.some(a=>a.startDs===entryStartDs)) return false
-    }
-    return true
-  }
-
-  function isLastCell(lastCellDs, entryStartDs) {
-    // Last cell for this entry if no later workday in allWorkDays has this same startDs active
-    for(let k=allWorkDays.length-1;k>=0;k--){
-      const wds=fmtDate(allWorkDays[k])
-      const entries=getActiveAll(member.name,wds)
-      if(entries.some(a=>a.startDs===entryStartDs)) return wds===lastCellDs
-    }
-    return false
-  }
-
   // Render a single entry row within a stacked cell
-  function renderEntryRow(entry, startDs, isVirtual, ds, lastCellDs, isOnly) {
-    const projColor=['leave','ph'].includes(entry.wtype)?null:getProjectColor(entry.pid,projects,adminTasks)
-    let bg=T.surfacePrimary, bc=T.blue, textColor=T.textPrimary
-    if(entry.wtype==='leave'){bg=T.redLight;bc=T.red;textColor=T.redText}
-    else if(entry.wtype==='ph'){bg=T.amberLight;bc=T.amber;textColor=T.amberText}
-    else if(entry.wtype==='admin'){bg=T.grayLight;bc=T.gray;textColor=T.textSecondary}
-    else if(projColor){const {r,g,b}=hexToRgb(projColor);bg=`rgba(${r},${g},${b},${T.mode!=='light'?.18:.15})`;bc=projColor;textColor=T.mode!=='light'?'#ffffff':projColor}
+  // currentDs is set per-call in renderWeek so renderEntryRow can access it
+  let currentDs = ''
 
-    const showStart=!isVirtual&&isFirstCell(ds, startDs)
-    const showEnd=!isVirtual&&isLastCell(lastCellDs, startDs)
-    const isHov=hoveredEntry===entry.id
+  function renderEntryRow(ae, isOnly) {
+    const {entry, startDs, isVirtual} = ae
+    const projColor = ['leave','ph'].includes(entry.wtype) ? null : getProjectColor(entry.pid,projects,adminTasks)
+    let bc=T.blue, textColor=T.textPrimary
+    if(entry.wtype==='leave'){bc=T.red;textColor=T.redText}
+    else if(entry.wtype==='ph'){bc=T.amber;textColor=T.amberText}
+    else if(entry.wtype==='admin'){bc=T.gray;textColor=T.textSecondary}
+    else if(projColor){bc=projColor;textColor=T.mode!=='light'?'#ffffff':projColor}
+    const hexColor = projColor||bc
+    const hx=hexColor.replace('#','')
+    const r=parseInt(hx.slice(0,2),16),g=parseInt(hx.slice(2,4),16),b2=parseInt(hx.slice(4,6),16)
+    const bg=`rgba(${r},${g},${b2},${T.mode!=='light'?.18:.15})`
+
+    // Find the first and last workday where this exact entry appears
+    const entryWorkdays = allWorkDays.filter(wd => {
+      const entries = getActiveAll(member.name, fmtDate(wd))
+      return entries.some(a => a.entry.id===entry.id && a.startDs===startDs)
+    })
+    const firstWd = entryWorkdays.length>0 ? fmtDate(entryWorkdays[0]) : startDs
+    const lastWd  = entryWorkdays.length>0 ? fmtDate(entryWorkdays[entryWorkdays.length-1]) : entry.end_date
+    const isHov = hoveredEntry===entry.id
+    const showStart = !isVirtual && currentDs===firstWd
+    const showEnd   = !isVirtual && currentDs===lastWd
 
     return(
       <div key={entry.id||startDs}
@@ -1197,47 +1189,40 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
         onMouseLeave={()=>setHoveredEntry(null)}
         onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry,multiEdit:true})}
         onMouseDown={!isVirtual?(e=>{if(e.target.closest('button'))return;if(e.button===0)startCopy(e,member.name,startDs,entry.id)}):undefined}
-        style={{
-          display:'flex',alignItems:'center',gap:3,
-          padding:'3px 5px',
+        style={{display:'flex',alignItems:'stretch',
           background:bg,borderLeft:`3px solid ${bc}`,
           cursor:isVirtual?'default':'pointer',
-          minHeight: isOnly?52:28,
-          flex:1,
-          borderBottom:'1px solid rgba(128,128,128,.12)',
-          position:'relative',
-        }}>
-        {/* Start arrows — hover only */}
-        {showStart&&(
-          <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,
-            opacity:isHov?1:0,transition:'opacity .12s'}}>
-            <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
-              onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1,entry.id)}}
-              style={arrowBtn}>{'<'}</button>
-            <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
-              onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1,entry.id)}}
-              style={arrowBtn}>{'>'}</button>
-          </div>
-        )}
-        <div style={{flex:1,minWidth:0,userSelect:'none'}}>
+          minHeight:isOnly?52:28,flex:1,
+          borderBottom:'1px solid rgba(128,128,128,.1)'}}>
+        {/* Start arrows — visible on hover, only on first workday */}
+        <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:1,
+          flexShrink:0,padding:'0 2px',
+          opacity:isHov&&showStart?1:0,transition:'opacity .12s',width:14}}>
+          <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1,entry.id)}}
+            style={arrowBtn}>{'<'}</button>
+          <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1,entry.id)}}
+            style={arrowBtn}>{'>'}</button>
+        </div>
+        <div style={{flex:1,minWidth:0,padding:'4px 3px',userSelect:'none',overflow:'hidden'}}>
           <div style={{fontSize:9,fontWeight:500,color:textColor,wordBreak:'break-word',lineHeight:1.3}}>{entry.task}</div>
           {entry.notes&&<div style={{fontSize:8,color:T.textSecondary,lineHeight:1.2}}>{entry.notes}</div>}
           {entry.wtype&&!['leave','ph','admin'].includes(entry.wtype)&&(
             <div style={{fontSize:8,color:T.textSecondary,fontStyle:'italic'}}>{entry.wtype}</div>
           )}
         </div>
-        {/* End arrows — hover only */}
-        {showEnd&&(
-          <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,
-            opacity:isHov?1:0,transition:'opacity .12s'}}>
-            <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
-              onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1,entry.id)}}
-              style={arrowBtn}>{'<'}</button>
-            <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
-              onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1,entry.id)}}
-              style={arrowBtn}>{'>'}</button>
-          </div>
-        )}
+        {/* End arrows — visible on hover, only on last workday */}
+        <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:1,
+          flexShrink:0,padding:'0 2px',
+          opacity:isHov&&showEnd?1:0,transition:'opacity .12s',width:14}}>
+          <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1,entry.id)}}
+            style={arrowBtn}>{'<'}</button>
+          <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1,entry.id)}}
+            style={arrowBtn}>{'>'}</button>
+        </div>
       </div>
     )
   }
@@ -1245,10 +1230,12 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
   function renderWeek(workDays){
     const cells=[]; let i=0
     while(i<workDays.length){
-      const d=workDays[i],ds=fmtDate(d)
+      const d=workDays[i], ds=fmtDate(d)
+      currentDs = ds
       const isToday=ds===todayDs
       const activeEntries=getActiveAll(member.name,ds)
 
+      // Empty cell
       if(activeEntries.length===0){
         cells.push(
           <td key={ds} onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null})}
@@ -1261,44 +1248,34 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
         ); i++; continue
       }
 
-      const {entry:firstEntry,startDs:firstStartDs,isVirtual:firstVirtual}=activeEntries[0]
-      // Spanning logic:
-      // A cell spans multiple columns only if EVERY subsequent day has the EXACT SAME
-      // set of entries (same startDs keys). This handles both single and multi-entry spans.
-      const entryKeys = activeEntries.map(ae=>ae.startDs).sort().join('|')
+      const {isVirtual:firstVirtual}=activeEntries[0]
+
+      // Span only single-entry cells — multi-entry always render per column
       let span=1, j=i+1
-      while(j<workDays.length){
-        const nextEntries=getActiveAll(member.name,fmtDate(workDays[j]))
-        const nextKeys = nextEntries.map(ae=>ae.startDs).sort().join('|')
-        // Only span if same number of entries AND same startDs keys
-        if(nextEntries.length===activeEntries.length && nextKeys===entryKeys){span++;j++}else break
+      if(activeEntries.length===1){
+        const ae0=activeEntries[0]
+        while(j<workDays.length){
+          const nxt=getActiveAll(member.name,fmtDate(workDays[j]))
+          if(nxt.length===1&&nxt[0].startDs===ae0.startDs&&nxt[0].entry.id===ae0.entry.id){span++;j++}else break
+        }
       }
 
       cells.push(
         <td key={ds} colSpan={span}
-          style={{...tdStyle,padding:0,verticalAlign:'top',background:isToday?T.surfaceToday:'transparent',
-            position:'relative'}}
+          style={{...tdStyle,padding:0,verticalAlign:'top',position:'relative',
+            background:isToday?T.surfaceToday:'transparent'}}
           onMouseEnter={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=1}}
           onMouseLeave={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=0}}>
-          {/* Stack all active entries */}
-          <div style={{display:'flex',flexDirection:'column',minHeight:52}}>
-            {activeEntries.map((ae,idx)=>{
-              const lastCellDs = fmtDate(workDays[j-1])
-              return renderEntryRow(ae.entry,ae.startDs,ae.isVirtual,ds,lastCellDs,activeEntries.length===1)
-            })}
+          <div style={{display:'flex',flexDirection:'column'}}>
+            {activeEntries.map(ae=>renderEntryRow(ae,activeEntries.length===1))}
           </div>
-          {/* Split button — hidden overlay, appears on cell hover */}
           {!firstVirtual&&(
             <div className="split-btn"
               onClick={e=>{e.stopPropagation();setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}}
-              style={{
-                position:'absolute',bottom:2,right:3,
-                opacity:0,transition:'opacity .15s',
-                fontSize:8,padding:'1px 5px',borderRadius:3,cursor:'pointer',
+              style={{position:'absolute',bottom:2,right:3,opacity:0,transition:'opacity .15s',
+                fontSize:8,padding:'1px 5px',borderRadius:3,cursor:'pointer',userSelect:'none',lineHeight:1.4,
                 background:T.mode!=='light'?'rgba(255,255,255,.1)':'rgba(0,0,0,.08)',
-                color:T.textMuted,border:`1px solid ${T.borderLight}`,
-                userSelect:'none',lineHeight:1.4,
-              }}>
+                color:T.textMuted,border:`1px solid ${T.borderLight}`}}>
               + split
             </div>
           )}
