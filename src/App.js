@@ -1164,8 +1164,8 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTask
   const allWorkDays=allWorkdays
   const todayDs=fmtDate(new Date())
 
-  const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.08)":'rgba(0,0,0,.08)',
-    border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)":'rgba(0,0,0,.4)',
+  const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)',
+    border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)':'rgba(0,0,0,.4)',
     fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
 
   function renderWeek(workDays){
