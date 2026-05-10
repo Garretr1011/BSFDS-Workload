@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase'
 import {
   fmtDate, fmtDisplay, fmtLeaveDate, fmtPHDate, parseLocalDate,
   addDays, isWeekend, getMondayOf, getWeekDays, DAY_SHORT,
-  getActiveTask, getActiveEntries, buildTasksMap, buildLeaveMap, buildPHMap,
+  getActiveTask, buildTasksMap, buildLeaveMap, buildPHMap,
   getProjectColor, getProjectLabel, nextAutoColor,
   hexToRgb, getOfficeColor, CORE_OFFICES, OFFICE_COLORS
 } from './lib/helpers'
@@ -409,9 +409,6 @@ export default function App() {
     getActiveTask(name,ds,tasks,upcomingLeave,upcomingPH,teamMembers),
     [tasks,upcomingLeave,upcomingPH,teamMembers])
 
-  const getActiveAll = useCallback((name,ds)=>
-    getActiveEntries(name,ds,tasks,upcomingLeave,upcomingPH,teamMembers),
-    [tasks,upcomingLeave,upcomingPH,teamMembers])
 
   // Stats filtered by office
   const statMembers = officeFilter==='all' ? teamMembers : teamMembers.filter(m=>m.office===officeFilter)
@@ -456,42 +453,54 @@ export default function App() {
   }
   async function withUndo(fn) { await pushUndo(); await fn() }
 
-  // Save a single task entry — if row.id exists update it, else insert new
-  async function saveTask(name,dateStr,pid,taskLabel,wtype,endDate,notes,skipUndo=false,existingId=null) {
+  // Save task(s) — supports single or grouped (multiple rows sharing group_id)
+  // rows: array of {pid, task, wtype, notes} — each becomes a DB row
+  // If rows.length > 1, they share a new group_id
+  async function saveTask(name, dateStr, rows, endDate, skipUndo=false) {
     if(!skipUndo) await pushUndo()
-    const row={member_name:name,start_date:dateStr,end_date:endDate||dateStr,
-      task:taskLabel,pid:pid||null,wtype,notes:notes||null,updated_at:new Date().toISOString()}
-    if(existingId) await supabase.from('task_assignments').update(row).eq('id',existingId)
-    else await supabase.from('task_assignments').insert(row)
-    await reloadAssignments()
-  }
+    // Delete existing assignments for this person on this date (clean replace)
+    const existing = assignments.filter(a=>a.member_name===name&&a.start_date===dateStr)
+    for(const e of existing) await supabase.from('task_assignments').delete().eq('id',e.id)
 
-  // Clear a specific entry by id, or all entries for a person on a date
-  async function clearTask(name,dateStr,entryId=null) {
-    await pushUndo()
-    if(entryId) {
-      await supabase.from('task_assignments').delete().eq('id',entryId)
-    } else {
-      // Clear ALL entries for this person on this date
-      const ids = (assignments||[])
-        .filter(a=>a.member_name===name&&a.start_date===dateStr)
-        .map(a=>a.id)
-      for(const id of ids) await supabase.from('task_assignments').delete().eq('id',id)
+    const groupId = rows.length>1 ? ('g'+Date.now()) : null
+    for(const row of rows) {
+      await supabase.from('task_assignments').insert({
+        member_name:name, start_date:dateStr, end_date:endDate||dateStr,
+        task:row.task, pid:row.pid||null, wtype:row.wtype,
+        notes:row.notes||null, group_id:groupId,
+        updated_at:new Date().toISOString()
+      })
     }
     await reloadAssignments()
   }
 
-  async function adjustTaskDate(name, startDs, which, delta, entryId=null) {
+  // Legacy single-row saveTask for drag-copy and other single-entry operations
+  async function saveSingleTask(name, dateStr, pid, taskLabel, wtype, endDate, notes, skipUndo=false) {
+    await saveTask(name, dateStr, [{pid, task:taskLabel, wtype, notes}], endDate, skipUndo)
+  }
+
+  async function clearTask(name, dateStr) {
+    await pushUndo()
+    const existing = assignments.filter(a=>a.member_name===name&&a.start_date===dateStr)
+    for(const e of existing) await supabase.from('task_assignments').delete().eq('id',e.id)
+    await reloadAssignments()
+  }
+
+  async function adjustTaskDate(name, startDs, which, delta) {
     const entriesOnDate=(tasks[name]||{})[startDs]||[]
-    const entry=entryId?entriesOnDate.find(e=>e.id===entryId)||entriesOnDate[0]:entriesOnDate[0]
-    if(!entry) return
+    if(!entriesOnDate.length) return
+    const firstEntry = entriesOnDate[0]
     await pushUndo()
-    let newStart=startDs,newEnd=entry.end_date
+    let newStart=startDs, newEnd=firstEntry.end_date
+
     function findOccupant(dateStr) {
-      let adj=assignments.find(a=>a.member_name===name&&a.start_date===dateStr&&a.id!==(entry.id||''))
+      // Find any assignment NOT in the current group
+      const groupIds = new Set(entriesOnDate.map(e=>e.id))
+      let adj=assignments.find(a=>a.member_name===name&&a.start_date===dateStr&&!groupIds.has(a.id))
       if(adj) return adj
-      return assignments.find(a=>a.member_name===name&&a.start_date<dateStr&&a.end_date>=dateStr&&a.id!==(entry.id||''))||null
+      return assignments.find(a=>a.member_name===name&&a.start_date<dateStr&&a.end_date>=dateStr&&!groupIds.has(a.id))||null
     }
+
     if(which==='start') {
       let d=parseLocalDate(startDs); do{d=addDays(d,delta)}while(isWeekend(d)); newStart=fmtDate(d)
       if(newStart>newEnd) newEnd=newStart
@@ -509,7 +518,7 @@ export default function App() {
         }
       }
     } else {
-      let d=parseLocalDate(entry.end_date); do{d=addDays(d,delta)}while(isWeekend(d)); newEnd=fmtDate(d)
+      let d=parseLocalDate(firstEntry.end_date); do{d=addDays(d,delta)}while(isWeekend(d)); newEnd=fmtDate(d)
       if(newEnd<newStart) newStart=newEnd
       if(delta>0) {
         const adj=findOccupant(newEnd)
@@ -525,28 +534,32 @@ export default function App() {
         }
       }
     }
-    if(entry.id) {
-      await supabase.from('task_assignments').update({start_date:newStart,end_date:newEnd,updated_at:new Date().toISOString()}).eq('id',entry.id)
+    // Update ALL rows in the group with the new dates
+    for(const e of entriesOnDate) {
+      await supabase.from('task_assignments').update({
+        start_date:newStart, end_date:newEnd, updated_at:new Date().toISOString()
+      }).eq('id',e.id)
     }
     await reloadAssignments()
   }
 
   function startResize(e,name,startDs,handle) {
     e.preventDefault(); e.stopPropagation()
-    const entry=tasks[name]?.[startDs]?.[0]; if(!entry) return
+    const entriesOnDate=(tasks[name]||{})[startDs]||[]
+    const entry=entriesOnDate[0]; if(!entry) return
     dragState.current={name,startDs,entry,handle,currentStart:startDs,currentEnd:entry.end_date}
     setDragGhost({x:e.clientX,y:e.clientY,text:entry.task,isCopy:false})
   }
-  function startCopy(e,name,startDs,entryId=null) {
+  function startCopy(e, name, startDs, entryId=null) {
     e.preventDefault(); e.stopPropagation()
-    const allEntries=getActiveAll(name,startDs)
-    const activeEntry = entryId
-      ? allEntries.find(a=>a.entry.id===entryId)
-      : allEntries[0]
-    const active = activeEntry || allEntries[0]
+    const active = getActive(name, startDs)
     if(!active||active.isVirtual) return
-    copyDragState.current={name,startDs,entry:active.entry}
-    setDragGhost({x:e.clientX,y:e.clientY,text:`+ ${active.entry.task}`,isCopy:true})
+    // Use first entry for copy, or specific entry if entryId provided
+    const entry = entryId
+      ? active.entries.find(en=>en.id===entryId) || active.entries[0]
+      : active.entries[0]
+    copyDragState.current={name, startDs:active.startDs, entry}
+    setDragGhost({x:e.clientX, y:e.clientY, text:`+ ${entry.task}`, isCopy:true})
   }
   function getDateAtX(clientX) {
     const ths=document.querySelectorAll('#grid-thead th[data-date]')
@@ -633,7 +646,7 @@ export default function App() {
             await supabase.from('task_assignments').update({start_date:targetDs,updated_at:new Date().toISOString()}).eq('id',mergeRight.id)
             showToast('Merged')
           } else {
-            await saveTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
+            await saveSingleTask(targetName,targetDs,entry.pid,entry.task,entry.wtype,newEnd,entry.notes,true)
             showToast(targetName===srcName?`Moved to ${fmtDisplay(parseLocalDate(targetDs))}`:`Copied to ${targetName}`)
           }
           await reloadAssignments()
@@ -775,7 +788,7 @@ export default function App() {
             leaveStatWeeks={leaveStatWeeks} setLeaveStatWeeks={setLeaveStatWeeks}
             unassigned={unassigned} unassignedHrs={unassigned*8}
             utilPct={utilPct} statWeeks={statWeeks} setStatWeeks={setStatWeeks}
-            getActive={getActive} getActiveAll={getActiveAll} setAssignModal={setAssignModal}
+            getActive={getActive} setAssignModal={setAssignModal}
             setLeaveModal={setLeaveModal} setPhModal={setPhModal}
             startResize={startResize} startCopy={startCopy}
             adjustTaskDate={adjustTaskDate}
@@ -881,7 +894,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
   onLeaveNames,unassignedNames,activeProjectsInWindow,
   search,setSearch,allOffices,onLeave,onLeaveHrs,leaveStatWeeks,setLeaveStatWeeks,
   unassigned,unassignedHrs,utilPct,statWeeks,setStatWeeks,
-  getActive,getActiveAll,setAssignModal,setLeaveModal,setPhModal,
+  getActive,setAssignModal,setLeaveModal,setPhModal,
   startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,
   moveRow,handleRowDrop,withUndo,showToast,T}) {
 
@@ -1086,7 +1099,7 @@ function WorkloadTab({days,weekSegments,allWorkdays,weekStart,setWeekStart,
                 ...members.map(m=>(
                   <MemberRow key={m.id} member={m}
                     weekSegments={weekSegments} allWorkdays={allWorkdays}
-                    getActive={getActive} getActiveAll={getActiveAll} projects={projects} adminTasks={adminTasks} roles={roles} categories={categories}
+                    getActive={getActive} projects={projects} adminTasks={adminTasks} roles={roles} categories={categories}
                     setAssignModal={setAssignModal}
                     startResize={startResize} startCopy={startCopy}
                     adjustTaskDate={adjustTaskDate}
@@ -1143,98 +1156,26 @@ function SectionTitle({title,T}){
 }
 
 // ── Member Row ─────────────────────────────────────────────────────────
-function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,projects,adminTasks,roles,categories,
+function MemberRow({member,weekSegments,allWorkdays,getActive,projects,adminTasks,roles,categories,
   setAssignModal,startResize,startCopy,adjustTaskDate,rowDragSrc,setRowDragSrc,onMoveRow,onRowDrop,T,tdStyle}){
   const catColors=buildCatColors(categories)
   const [hovered,setHovered]=useState(false)
-  const [hoveredEntry,setHoveredEntry]=useState(null) // tracks which entry id is hovered for arrow show
   const isDragTarget=rowDragSrc&&rowDragSrc.id!==member.id&&rowDragSrc.office===member.office
   const allWorkDays=allWorkdays
   const todayDs=fmtDate(new Date())
 
-  const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)',
-    border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)':'rgba(0,0,0,.4)',
+  const arrowBtn={background:T.mode!=='light'?'rgba(255,255,255,.08)":'rgba(0,0,0,.08)',
+    border:'none',cursor:'pointer',color:T.mode!=='light'?'rgba(255,255,255,.5)":'rgba(0,0,0,.4)',
     fontSize:8,padding:'2px 3px',lineHeight:1,borderRadius:2}
-  // Render a single entry row within a stacked cell
-  function renderEntryRow(ae, isOnly, cellStartDs, lastSpanDs) {
-    const {entry, startDs, isVirtual} = ae
-    const projColor = ['leave','ph'].includes(entry.wtype) ? null : getProjectColor(entry.pid,projects,adminTasks)
-    let bc=T.blue, textColor=T.textPrimary
-    if(entry.wtype==='leave'){bc=T.red;textColor=T.redText}
-    else if(entry.wtype==='ph'){bc=T.amber;textColor=T.amberText}
-    else if(entry.wtype==='admin'){bc=T.gray;textColor=T.textSecondary}
-    else if(projColor){bc=projColor;textColor=T.mode!=='light'?'#ffffff':projColor}
-    const hexColor = projColor||bc
-    const hx=hexColor.replace('#','')
-    const r=parseInt(hx.slice(0,2),16),g=parseInt(hx.slice(2,4),16),b2=parseInt(hx.slice(4,6),16)
-    const bg=`rgba(${r},${g},${b2},${T.mode!=='light'?.18:.15})`
-
-    // Find the first and last workday where this exact entry appears (across both weeks)
-    const entryWorkdays = allWorkDays.filter(wd => {
-      const entries = getActiveAll(member.name, fmtDate(wd))
-      return entries.some(a => a.entry.id===entry.id && a.startDs===startDs)
-    })
-    const firstWd = entryWorkdays.length>0 ? fmtDate(entryWorkdays[0]) : startDs
-    const lastWd  = entryWorkdays.length>0 ? fmtDate(entryWorkdays[entryWorkdays.length-1]) : entry.end_date
-    const isHov = hoveredEntry===entry.id
-    // Show start arrows only on the td that contains the entry's first workday
-    const showStart = !isVirtual && cellStartDs===firstWd
-    // Show end arrows only on the td that contains the entry's last workday
-    const showEnd   = !isVirtual && lastSpanDs===lastWd
-
-    return(
-      <div key={entry.id||startDs}
-        onMouseEnter={()=>!isVirtual&&setHoveredEntry(entry.id)}
-        onMouseLeave={()=>setHoveredEntry(null)}
-        onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entry,multiEdit:true})}
-        onMouseDown={!isVirtual?(e=>{if(e.target.closest('button'))return;if(e.button===0)startCopy(e,member.name,startDs,entry.id)}):undefined}
-        style={{display:'flex',alignItems:'stretch',
-          background:bg,borderLeft:`3px solid ${bc}`,
-          cursor:isVirtual?'default':'pointer',
-          minHeight:isOnly?52:28,flex:1,
-          borderBottom:'1px solid rgba(128,128,128,.1)'}}>
-        {/* Start arrows — visible on hover, only on first workday */}
-        <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:1,
-          flexShrink:0,padding:'0 2px',
-          opacity:isHov&&showStart?1:0,transition:'opacity .12s',width:14}}>
-          <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1,entry.id)}}
-            style={arrowBtn}>{'<'}</button>
-          <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1,entry.id)}}
-            style={arrowBtn}>{'>'}</button>
-        </div>
-        <div style={{flex:1,minWidth:0,padding:'4px 3px',userSelect:'none',overflow:'hidden'}}>
-          <div style={{fontSize:9,fontWeight:500,color:textColor,wordBreak:'break-word',lineHeight:1.3}}>{entry.task}</div>
-          {entry.notes&&<div style={{fontSize:8,color:T.textSecondary,lineHeight:1.2}}>{entry.notes}</div>}
-          {entry.wtype&&!['leave','ph','admin'].includes(entry.wtype)&&(
-            <div style={{fontSize:8,color:T.textSecondary,fontStyle:'italic'}}>{entry.wtype}</div>
-          )}
-        </div>
-        {/* End arrows — visible on hover, only on last workday */}
-        <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:1,
-          flexShrink:0,padding:'0 2px',
-          opacity:isHov&&showEnd?1:0,transition:'opacity .12s',width:14}}>
-          <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1,entry.id)}}
-            style={arrowBtn}>{'<'}</button>
-          <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
-            onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1,entry.id)}}
-            style={arrowBtn}>{'>'}</button>
-        </div>
-      </div>
-    )
-  }
 
   function renderWeek(workDays){
     const cells=[]; let i=0
     while(i<workDays.length){
       const d=workDays[i], ds=fmtDate(d)
       const isToday=ds===todayDs
-      const activeEntries=getActiveAll(member.name,ds)
+      const active=getActive(member.name,ds)
 
-      // Empty cell
-      if(activeEntries.length===0){
+      if(!active){
         cells.push(
           <td key={ds} onClick={()=>setAssignModal({name:member.name,dateStr:ds,entry:null})}
             style={{...tdStyle,minHeight:52,background:isToday?T.surfaceToday:T.surfacePrimary}}
@@ -1246,40 +1187,89 @@ function MemberRow({member,weekSegments,allWorkdays,getActive,getActiveAll,proje
         ); i++; continue
       }
 
-      const {isVirtual:firstVirtual}=activeEntries[0]
+      const {entries, startDs, isVirtual}=active
+      const firstEntry=entries[0]
+      const isGrouped=entries.length>1
 
-      // Span cells when ALL entries on the next day are identical (same ids, same order)
-      // This works for both single and multi-entry spans
-      const idsKey = activeEntries.map(ae=>ae.entry.id).join('|')
+      // Span check — span if next day has same startDs (same group)
       let span=1, j=i+1
       while(j<workDays.length){
-        const nxt=getActiveAll(member.name,fmtDate(workDays[j]))
-        const nxtKey=nxt.map(ae=>ae.entry.id).join('|')
-        if(nxt.length===activeEntries.length && nxtKey===idsKey){span++;j++}else break
+        const nxt=getActive(member.name,fmtDate(workDays[j]))
+        if(nxt&&nxt.startDs===startDs){span++;j++}else break
       }
-      // lastDs is the last day of this span — used for end-arrow visibility
-      const lastSpanDs = fmtDate(workDays[j-1])
+
+      // Arrow visibility
+      const lastCellDs=fmtDate(workDays[j-1])
+      const showStartArrows=!isVirtual&&ds===startDs
+      const showEndArrows=!isVirtual&&(firstEntry.end_date<=lastCellDs||j===workDays.length)
+
+      // Cell colour — use first entry's colour for border; grouped gets multi-dot treatment
+      const firstProjColor=isGrouped||['leave','ph'].includes(firstEntry.wtype)?null:getProjectColor(firstEntry.pid,projects,adminTasks)
+      let bc=T.blue
+      if(firstEntry.wtype==='leave') bc=T.red
+      else if(firstEntry.wtype==='ph') bc=T.amber
+      else if(firstEntry.wtype==='admin') bc=T.gray
+      else if(firstProjColor) bc=firstProjColor
+      else if(isGrouped) bc=T.blue
+
+      const hexC=bc.replace('#','')
+      const {r,g,b}={r:parseInt(hexC.slice(0,2),16),g:parseInt(hexC.slice(2,4),16),b:parseInt(hexC.slice(4,6),16)}
+      const bgColor=`rgba(${r},${g},${b},${T.mode!=='light'?.15:.1})`
 
       cells.push(
         <td key={ds} colSpan={span}
-          style={{...tdStyle,padding:0,verticalAlign:'top',position:'relative',
-            background:isToday?T.surfaceToday:'transparent'}}
-          onMouseEnter={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=1}}
-          onMouseLeave={e=>{const btn=e.currentTarget.querySelector('.split-btn');if(btn)btn.style.opacity=0}}>
-          <div style={{display:'flex',flexDirection:'column'}}>
-            {activeEntries.map(ae=>renderEntryRow(ae, activeEntries.length===1, ds, lastSpanDs))}
-          </div>
-          {!firstVirtual&&(
-            <div className="split-btn"
-              onClick={e=>{e.stopPropagation();setAssignModal({name:member.name,dateStr:ds,entry:null,addToExisting:true})}}
-              style={{position:'absolute',bottom:2,left:'50%',transform:'translateX(-50%)',
-                opacity:0,transition:'opacity .15s',
-                fontSize:8,padding:'1px 5px',borderRadius:3,cursor:'pointer',userSelect:'none',lineHeight:1.4,
-                background:T.mode!=='light'?'rgba(255,255,255,.1)':'rgba(0,0,0,.08)',
-                color:T.textMuted,border:`1px solid ${T.borderLight}`,whiteSpace:'nowrap'}}>
-              + split
+          style={{...tdStyle,cursor:isVirtual?'default':'pointer',background:bgColor,
+            borderLeft:`3px solid ${bc}`,padding:0,verticalAlign:'top'}}
+          onClick={()=>!isVirtual&&setAssignModal({name:member.name,dateStr:startDs,entries,isGrouped})}
+          onMouseDown={!isVirtual?(e=>{if(e.target.closest('button'))return;if(e.button===0)startCopy(e,member.name,startDs)}):undefined}>
+          <div style={{padding:'4px 6px',display:'flex',alignItems:'flex-start',gap:3,minHeight:52}}>
+            {/* Start arrows */}
+            {showStartArrows&&(
+              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
+                <button title="Move start earlier" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',-1)}} style={arrowBtn}>{'<'}</button>
+                <button title="Move start later" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'start',1)}} style={arrowBtn}>{'>'}</button>
+              </div>
+            )}
+            <div style={{flex:1,minWidth:0,userSelect:'none'}}>
+              {isGrouped ? (
+                // Combined label — coloured dot + short label per entry
+                <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                  {entries.map((en,idx)=>{
+                    const pc=getProjectColor(en.pid,projects,adminTasks)
+                    const dotColor=pc||(['leave','ph'].includes(en.wtype)?T.red:en.wtype==='admin'?T.gray:T.blue)
+                    return(
+                      <div key={en.id||idx} style={{display:'flex',alignItems:'center',gap:4}}>
+                        <span style={{width:7,height:7,borderRadius:'50%',background:dotColor,flexShrink:0,display:'inline-block'}} />
+                        <span style={{fontSize:9,fontWeight:500,color:T.textPrimary,lineHeight:1.3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{en.task}</span>
+                        <span style={{fontSize:8,color:T.textSecondary,fontStyle:'italic',flexShrink:0}}>{en.wtype}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                // Single entry — normal display
+                <>
+                  <div style={{fontSize:10,fontWeight:500,color:firstEntry.wtype==='leave'?T.red:firstEntry.wtype==='ph'?T.amber:T.textPrimary,
+                    wordBreak:'break-word',lineHeight:1.3}}>{firstEntry.task}</div>
+                  {firstEntry.notes&&<div style={{fontSize:9,color:T.textSecondary,marginTop:2,lineHeight:1.3}}>{firstEntry.notes}</div>}
+                  {firstEntry.wtype&&!['leave','ph','admin'].includes(firstEntry.wtype)&&(
+                    <div style={{fontSize:9,color:T.textSecondary,fontStyle:'italic',marginTop:1}}>{firstEntry.wtype}</div>
+                  )}
+                </>
+              )}
             </div>
-          )}
+            {/* End arrows */}
+            {showEndArrows&&(
+              <div style={{display:'flex',flexDirection:'column',gap:1,flexShrink:0,paddingTop:4}}>
+                <button title="Move end earlier" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',-1)}} style={arrowBtn}>{'<'}</button>
+                <button title="Move end later" onMouseDown={e=>e.stopPropagation()}
+                  onClick={e=>{e.stopPropagation();adjustTaskDate(member.name,startDs,'end',1)}} style={arrowBtn}>{'>'}</button>
+              </div>
+            )}
+          </div>
         </td>
       )
       i=j
@@ -1725,93 +1715,136 @@ function AdminSection({title,onAdd,children,T}){
 // MODALS
 // ════════════════════════════════════════════════════════════════════
 function AssignModal({modal,onClose,projects,adminTasks,onSave,onClear,showToast,T}){
-  const {name,dateStr,entry,multiEdit,addToExisting}=modal
-  // multiEdit: editing a specific entry in a split cell
-  // addToExisting: adding a new project row to an existing cell
+  const {name,dateStr,entries:existingEntries,isGrouped}=modal
   const I=makeI(T); const btnBase=makeBtnBase(T)
-  const [pid,setPid]=useState(()=>{
-    if(!entry) return ''
-    if(entry.task==='Annual Leave') return '__annual_leave__'
-    if(entry.task==='Sick Leave') return '__sick_leave__'
-    if(!entry.pid&&entry.task) return '__custom__'
-    return entry.pid||''
-  })
-  const [customTask,setCustomTask]=useState(entry&&!entry.pid&&entry.task&&entry.task!=='Annual Leave'&&entry.task!=='Sick Leave'?entry.task:'')
-  const [wtype,setWtype]=useState(entry?.wtype||'modelling')
-  const [endDate,setEndDate]=useState(entry?.end_date||dateStr)
-  const [notes,setNotes]=useState(entry?.notes||'')
-  const isLeave=pid==='__annual_leave__'||pid==='__sick_leave__'
   const d=parseLocalDate(dateStr)
 
-  const title = multiEdit ? 'Edit entry' : addToExisting ? 'Add project to split' : name
+  // Build initial rows from existing entries
+  function makeRow(en){
+    if(!en) return {pid:'',customTask:'',wtype:'modelling',useCustom:false}
+    if(en.task==='Annual Leave') return {pid:'__annual_leave__',customTask:'',wtype:'leave',useCustom:false}
+    if(en.task==='Sick Leave')   return {pid:'__sick_leave__',customTask:'',wtype:'leave',useCustom:false}
+    if(!en.pid&&en.task)         return {pid:'__custom__',customTask:en.task,wtype:en.wtype,useCustom:true}
+    return {pid:en.pid||'',customTask:'',wtype:en.wtype||'modelling',useCustom:false}
+  }
+
+  const initRows = existingEntries&&existingEntries.length>0
+    ? existingEntries.map(en=>makeRow(en))
+    : [makeRow(null)]
+
+  const [rows,setRows]=useState(initRows)
+  const [endDate,setEndDate]=useState(()=>{
+    if(existingEntries&&existingEntries[0]) return existingEntries[0].end_date||dateStr
+    return dateStr
+  })
+  const [notes,setNotes]=useState(existingEntries&&existingEntries[0]?existingEntries[0].notes||'':'')
+
+  function updateRow(idx,key,val){
+    setRows(prev=>{const r=[...prev];r[idx]={...r[idx],[key]:val};return r})
+  }
+  function addRow(){ setRows(prev=>[...prev,makeRow(null)]) }
+  function removeRow(idx){ setRows(prev=>prev.filter((_,i)=>i!==idx)) }
 
   async function save(){
-    let label='',fw=wtype
-    if(pid==='__annual_leave__'){label='Annual Leave';fw='leave'}
-    else if(pid==='__sick_leave__'){label='Sick Leave';fw='leave'}
-    else if(pid==='__custom__'){label=customTask.trim();if(!label){showToast('Enter a task description');return}}
-    else if(pid){label=getProjectLabel(pid,projects,adminTasks)}
-    else{label=customTask.trim()||wtype}
-    // Pass entry.id so saveTask updates the right row (for multiEdit)
-    // Pass null id for addToExisting so it inserts a new row
-    const existingId = multiEdit ? (entry?.id||null) : null
-    await onSave(name,dateStr,isLeave?'':pid,label,fw,endDate,notes,false,existingId)
+    const outRows=[]
+    for(const row of rows){
+      let label='',wtype=row.wtype,pid=row.pid
+      if(row.pid==='__annual_leave__'){label='Annual Leave';wtype='leave';pid=''}
+      else if(row.pid==='__sick_leave__'){label='Sick Leave';wtype='leave';pid=''}
+      else if(row.pid==='__custom__'){
+        label=row.customTask.trim()
+        if(!label){showToast('Enter a task description');return}
+        pid=''
+      } else if(row.pid) {
+        label=getProjectLabel(row.pid,projects,adminTasks)
+      } else {
+        showToast('Select a project or task for each row'); return
+      }
+      outRows.push({pid,task:label,wtype,notes:outRows.length===0?notes:''})
+    }
+    await onSave(name,dateStr,outRows,endDate)
     onClose()
   }
 
   return(
     <Modal open onClose={onClose} T={T}>
       <h3 style={{fontFamily:'Syne,sans-serif',fontSize:15,marginBottom:3,color:T.textPrimary}}>{name}</h3>
-      <div style={{fontSize:11,color:T.textSecondary,marginBottom:addToExisting?6:18}}>
+      <div style={{fontSize:11,color:T.textSecondary,marginBottom:14}}>
         {d.toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
       </div>
-      {addToExisting&&(
-        <div style={{fontSize:10,color:T.blue,marginBottom:14,padding:'5px 10px',
-          background:T.blueLight,borderRadius:4,border:`1px solid ${T.blue}`}}>
-          Adding a second project to this day — creates a stacked split cell
-        </div>
-      )}
-      <label style={I.label}>Project / Task</label>
-      <select value={pid} onChange={e=>setPid(e.target.value)} style={I.base}>
-        <option value="">- select -</option>
-        <optgroup label="Leave">
-          <option value="__annual_leave__">Annual Leave</option>
-          <option value="__sick_leave__">Sick Leave</option>
-        </optgroup>
-        {projects.filter(p=>p.status==='active').length>0&&<optgroup label="Active Projects">
-          {projects.filter(p=>p.status==='active').map(p=><option key={p.id} value={p.id}>{p.job} - {p.name}</option>)}
-        </optgroup>}
-        {adminTasks.length>0&&<optgroup label="Admin & Recurring">
-          {adminTasks.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-        </optgroup>}
-        <option value="__custom__">Custom...</option>
-      </select>
-      {pid==='__custom__'&&<input value={customTask} onChange={e=>setCustomTask(e.target.value)}
-        placeholder="Task description..." style={{...I.base,marginTop:6}} />}
-      {isLeave&&<div style={{fontSize:10,color:T.red,marginTop:6,padding:'4px 8px',
-        background:T.redLight,borderRadius:4}}>Work type set automatically to Leave</div>}
-      <div style={{...I.row,marginTop:13,opacity:isLeave?.5:1}}>
-        <div><label style={I.label}>Work Type</label>
-          <select value={wtype} onChange={e=>setWtype(e.target.value)} style={I.base} disabled={isLeave}>
-            <option value="modelling">Modelling</option><option value="editing">Editing</option>
-            <option value="checking">Checking</option><option value="admin">Admin / Management</option>
-            <option value="leave">Leave / AL</option><option value="ph">Public Holiday</option>
-            <option value="other">Other</option>
-          </select></div>
+
+      {/* One row per project */}
+      {rows.map((row,idx)=>{
+        const isLeave=row.pid==='__annual_leave__'||row.pid==='__sick_leave__'
+        const projColor=row.pid&&!isLeave&&row.pid!=='__custom__'?getProjectColor(row.pid,projects,adminTasks):null
+        return(
+          <div key={idx} style={{
+            background:T.surfaceSecond,borderRadius:6,padding:'10px 12px',marginBottom:8,
+            border:`1px solid ${projColor||T.border}`,position:'relative'
+          }}>
+            {rows.length>1&&(
+              <button onClick={()=>removeRow(idx)}
+                style={{position:'absolute',top:6,right:8,background:'none',border:'none',
+                  cursor:'pointer',color:T.red,fontSize:14,lineHeight:1}}>✕</button>
+            )}
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+              {projColor&&<span style={{width:10,height:10,borderRadius:'50%',background:projColor,display:'inline-block',flexShrink:0}} />}
+              <span style={{fontSize:10,color:T.textSecondary}}>
+                {rows.length>1?`Project ${idx+1}`:'Project / Task'}
+              </span>
+            </div>
+            <select value={row.pid} onChange={e=>updateRow(idx,'pid',e.target.value)} style={I.base}>
+              <option value="">- select -</option>
+              <optgroup label="Leave">
+                <option value="__annual_leave__">Annual Leave</option>
+                <option value="__sick_leave__">Sick Leave</option>
+              </optgroup>
+              {projects.filter(p=>p.status==='active').length>0&&<optgroup label="Active Projects">
+                {projects.filter(p=>p.status==='active').map(p=><option key={p.id} value={p.id}>{p.job} - {p.name}</option>)}
+              </optgroup>}
+              {adminTasks.length>0&&<optgroup label="Admin & Recurring">
+                {adminTasks.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+              </optgroup>}
+              <option value="__custom__">Custom...</option>
+            </select>
+            {row.pid==='__custom__'&&(
+              <input value={row.customTask} onChange={e=>updateRow(idx,'customTask',e.target.value)}
+                placeholder="Task description..." style={{...I.base,marginTop:6}} />
+            )}
+            {!isLeave&&(
+              <div style={{marginTop:6}}>
+                <select value={row.wtype} onChange={e=>updateRow(idx,'wtype',e.target.value)} style={I.base}>
+                  <option value="modelling">Modelling</option>
+                  <option value="editing">Editing</option>
+                  <option value="checking">Checking</option>
+                  <option value="admin">Admin / Management</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Add another project */}
+      <button onClick={addRow}
+        style={{...btnBase,width:'100%',marginBottom:12,borderStyle:'dashed',
+          color:T.blue,borderColor:T.blue,fontSize:11}}>
+        + Add another project
+      </button>
+
+      {/* Shared end date and notes */}
+      <div style={I.row}>
         <div><label style={I.label}>End Date</label>
           <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={I.base} /></div>
+        <div><label style={I.label}>Notes</label>
+          <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional..." style={I.base} /></div>
       </div>
-      <label style={I.label}>Notes</label>
-      <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional notes..."
-        style={{...I.base,resize:'vertical',minHeight:50}} />
+
       <div style={{display:'flex',gap:8,marginTop:18,justifyContent:'flex-end'}}>
-        {multiEdit&&entry&&(
-          <button onClick={async()=>{await onClear(name,dateStr,entry.id);onClose()}}
-            style={{...btnBase,borderColor:T.red,color:T.red}}>Remove this entry</button>
-        )}
-        {!multiEdit&&!addToExisting&&entry&&(
+        {existingEntries&&existingEntries.length>0&&(
           <button onClick={async()=>{await onClear(name,dateStr);onClose()}}
-            style={{...btnBase,borderColor:T.red,color:T.red}}>Clear all</button>
+            style={{...btnBase,borderColor:T.red,color:T.red}}>Clear</button>
         )}
         <button onClick={onClose} style={btnBase}>Cancel</button>
         <button onClick={save} style={{...btnBase,background:T.blue,borderColor:T.blue,color:'#fff'}}>Save</button>
